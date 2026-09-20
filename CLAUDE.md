@@ -42,9 +42,26 @@ Leadership uses the data to decide who receives crafted Elites.
    (who/what/before/after/when) and the audit log is public.
 10. **Pages** — Progress (home), Contributors, Ledger, Member, Upload, Crafts,
     Admin.
-11. **Dropped from v1** — TypeSafe AI (text-only input, can't see
-    screenshots), Discord-bot uploader (later add-on), recipe-tree expansion,
-    withdrawals, point/silver weights.
+11. **Jev (TypeSafe AI) is the second-opinion judge** — Jev's input is
+    text/JSON only (primitives: `noul` yes/no probability, `choice`,
+    `score`), so it cannot read screenshots. Claude vision extracts rows and
+    also emits a short text description of each icon; Jev then `choice`s the
+    item from the catalog using that description and `noul`s "is this a
+    plausible deposit row?". Agreement between Claude and Jev → confident row;
+    disagreement → highlighted on the verify screen. The eval harness reports
+    both models' accuracy and their agreement rate.
+12. **Dropped from v1** — Discord-bot uploader (later add-on), recipe-tree
+    expansion, withdrawals, point/silver weights.
+
+## UI & workflow
+
+- **UI kit** — Radix Themes (simple, default-ish theme) + Framer Motion for
+  interactions and page/element transitions. No custom design system yet;
+  design decisions from the design grill are recorded below as they land.
+- **Testing** — verify UI changes in the built-in browser (Claude desktop
+  browser pane), not just unit tests. Mute any audio first.
+- **Implementation** — use subagents for parallelisable slice work; keep the
+  main session for integration and review.
 
 ## Reference data
 
