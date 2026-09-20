@@ -12,8 +12,9 @@ pnpm dev              # http://localhost:3000
 ```
 
 No Postgres server, Docker, or `.env` is needed. Copy `.env.example` to `.env`
-only to point at a real Postgres (`DATABASE_URL`) or set the guild name
-(`NEXT_PUBLIC_GUILD_NAME`).
+only to point at a real Postgres (`DATABASE_URL`), set the guild name
+(`NEXT_PUBLIC_GUILD_NAME`), or call the Claude API from the Extractor
+(`ANTHROPIC_API_KEY`).
 
 ## Scripts
 
@@ -24,10 +25,12 @@ only to point at a real Postgres (`DATABASE_URL`) or set the guild name
 | `pnpm dev:webpack` / `build:webpack` | Same, with webpack — needed on FAT32 checkouts (see below) |
 | `pnpm lint`         | ESLint (`eslint-config-next`)                                       |
 | `pnpm typecheck`    | `tsc --noEmit`                                                      |
-| `pnpm test`         | Vitest (progress module + an in-memory PGlite migrate/seed test)    |
+| `pnpm test`         | Vitest (progress, extractor with a fake client, in-memory PGlite migrate/seed) |
 | `pnpm db:generate`  | `drizzle-kit generate`: write a new SQL migration from `src/db/schema.ts` into `drizzle/` |
 | `pnpm db:migrate`   | Apply committed migrations to the configured database               |
 | `pnpm db:seed`      | Migrate, then upsert the catalog and recipes (idempotent)           |
+| `pnpm eval:extractor` | Score the Extractor against `fixtures/extractor/` (`--mock` = no API key) |
+| `pnpm fixtures:extractor` | Redraw the synthetic extractor fixtures                       |
 
 ## Database: PGlite vs `DATABASE_URL`
 
@@ -88,12 +91,77 @@ Naming choices, where CLAUDE.md and the codex differ:
   drawn placeholder (`public/icons/silver_coin_placeholder.png`); swap in a
   real one when we have a bank-log crop.
 
+## Extractor
+
+`src/modules/extractor/` turns a bank-log screenshot into deposit rows. It is
+the only code allowed to import `@anthropic-ai/sdk` (ESLint
+`no-restricted-imports` enforces it); everything else calls one function:
+
+```ts
+import { extract, ExtractorError } from "@/modules/extractor";
+
+const result = await extract({ image, mediaType: "image/png", knownCharacters: ["Leftaltar"] });
+// { looksLikeBankLog, rows, characters, warnings, model, usage }
+```
+
+One request per screenshot to `claude-opus-5`: the system prompt, then every
+tracked item's icon from `public/icons/` with an "id / name / rarity" label
+(prompt-cached, so repeat uploads only pay for the screenshot), then the
+screenshot. Structured outputs pin the item id to the catalog ids plus
+`unknown`. The model reports every row it sees; the module then applies the
+rules it owns (CLAUDE.md decision 3): withdrawals and unclear rows are dropped
+with a warning, Silver Coin uses the inline amount, quantities stay digit
+strings (`"10000000000"` never touches `Number`), no overlay number means 1,
+and an image that is not a bank log returns no rows. Each row carries a 0-1
+confidence, a reason when it is low, and a short icon description for the
+text-only second judge. Every failure is an `ExtractorError` with a `kind`:
+`refusal`, `rate_limit`, `api`, `network`, `invalid_output` or `config`.
+
+Settings (`.env`): `ANTHROPIC_API_KEY`; `EXTRACTOR_MODEL` (default
+`claude-opus-5`); `EXTRACTOR_EFFORT` (`low`...`max`, unset = API default);
+`EXTRACTOR_FALLBACKS` (`on`/`off`). Fallbacks are the API's server-side refusal
+fallback (`fallbacks: "default"`, beta): if a safety classifier declines the
+request it is re-run on Anthropic's recommended substitute model inside the
+same call, and the result carries a warning naming the model that answered. On
+by default for `claude-opus-5`, off for any other model.
+
+### Eval
+
+```sh
+pnpm eval:extractor --mock                 # canned model output, no key, no network (CI)
+pnpm eval:extractor                        # live: one API call per fixture, needs ANTHROPIC_API_KEY
+pnpm eval:extractor --json --min-accuracy 0.95 synthetic-all-items
+```
+
+It runs each fixture through `extract()`, matches rows order-insensitively on
+(item id, quantity, game timestamp, character) and prints matched / expected /
+extra per fixture plus totals: row accuracy (`matched / (matched + missing +
+extra)`), item-id accuracy, quantity accuracy. It exits non-zero below
+`--min-accuracy` (default 0). `--json` writes a report to
+`fixtures/extractor/.results/` (gitignored). `--fixtures <dir>` points it at
+another folder; trailing names select fixtures. `EXTRACTOR_MODEL` makes it the
+eval for trying a cheaper model.
+
+Fixtures live in `fixtures/extractor/<name>/`:
+
+- `screenshot.png` (or `.jpg` / `.webp`)
+- `expected.json`: `{ "looksLikeBankLog": true, "rows": [{ "itemId", "quantity", "gameTimestamp", "character" }] }`, deposit rows only
+- `mock-response.json` (optional): a canned model answer, withdrawals and
+  display formatting included, so `--mock` still exercises the module's rules
+
+The four `synthetic-*` fixtures are drawn by `pnpm fixtures:extractor`
+(`scripts/make-synthetic-fixtures.ts`) from the real icons and approximate the
+game's layout from a description. To add a real screenshot, drop it in a new
+folder with a hand-checked `expected.json`.
+
 ## Layout
 
 - `src/catalog/` vendored catalog + recipes (pure data)
 - `src/db/` Drizzle schema, driver switch, queries, seed
 - `src/modules/progress/` pure `computeProgress()` with tests
+- `src/modules/extractor/` `extract()`: screenshot to deposit rows via the Claude API, plus the eval
+- `fixtures/extractor/` eval fixtures (screenshot + expected rows)
 - `src/components/` Radix Themes UI (`ItemChip`, shell, progress bars)
 - `src/app/` Next.js App Router pages (`/` is Progress; other routes are placeholders)
 - `drizzle/` generated SQL migrations (committed)
-- `scripts/` `tsx` entry points for migrate / seed
+- `scripts/` `tsx` entry points for migrate / seed / extractor eval / fixture drawing

@@ -10,3 +10,4 @@ node_modules/
 .pglite/
 *.tsbuildinfo
 next-env.d.ts
+fixtures/extractor/.results/

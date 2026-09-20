@@ -14,9 +14,12 @@
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
-    "db:seed": "tsx scripts/seed.ts"
+    "db:seed": "tsx scripts/seed.ts",
+    "eval:extractor": "tsx scripts/eval-extractor.ts",
+    "fixtures:extractor": "tsx scripts/make-synthetic-fixtures.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.127.0",
     "@electric-sql/pglite": "0.5.8",
     "@radix-ui/themes": "3.3.0",
     "drizzle-orm": "0.45.2",
@@ -24,9 +27,11 @@
     "next": "16.3.5",
     "postgres": "3.4.9",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "1.0.9",
     "@types/node": "26.6.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

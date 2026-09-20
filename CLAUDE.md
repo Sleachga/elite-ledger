@@ -46,14 +46,14 @@ Leadership uses the data to decide who receives crafted Elites.
    (who/what/before/after/when) and the audit log is public.
 10. **Pages** — Progress (home), Contributors, Ledger, Member, Upload, Crafts,
     Admin.
-11. **Jev (TypeSafe AI) is the second-opinion judge** — Jev's input is
-    text/JSON only (primitives: `noul` yes/no probability, `choice`,
-    `score`), so it cannot read screenshots. Claude vision extracts rows and
-    also emits a short text description of each icon; Jev then `choice`s the
-    item from the catalog using that description and `noul`s "is this a
-    plausible deposit row?". Agreement between Claude and Jev → confident row;
-    disagreement → highlighted on the verify screen. The eval harness reports
-    both models' accuracy and their agreement rate.
+11. **Jev (TypeSafe AI) judge — parked (#15)** — Jev's input is text/JSON
+    only (`noul`, `choice`, `score`), so it cannot read screenshots. The idea
+    was a second opinion over the extractor's per-row icon description, but
+    with a human verify step on every upload it is mostly redundant. Revisit
+    only if the fixture eval (#7) or verify-screen correction rates show the
+    extractor is worse than expected. The extractor still emits
+    `iconDescription` per row so the judge can be added without a schema
+    change.
 12. **Dropped from v1** — Discord-bot uploader (later add-on), recipe-tree
     expansion, withdrawals, point/silver weights.
 
@@ -99,6 +99,13 @@ Leadership uses the data to decide who receives crafted Elites.
   browser pane), not just unit tests. Mute any audio first.
 - **Implementation** — use subagents for parallelisable slice work; keep the
   main session for integration and review.
+- **PRs** — solo repo: the main session verifies a slice branch (lint,
+  typecheck, test, build, browser check for UI), opens the PR, and merges it
+  without waiting for review. Use merge commits, not squash, so stacked slice
+  branches keep a clean history.
+- **Secrets** — never in chat or commits. 1Password (`op`) holds them; `.env`
+  is filled with `op inject` from `.env.tpl` references. Env var names are
+  fixed in issue #3.
 
 ## Reference data
 

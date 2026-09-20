@@ -1,0 +1,95 @@
+{
+  "looksLikeBankLog": true,
+  "rows": [
+    {
+      "itemId": "nyxium",
+      "quantity": "3",
+      "gameTimestamp": "09.09.2026 - 20:59",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "gold-ingot",
+      "quantity": "10",
+      "gameTimestamp": "09.09.2026 - 20:57",
+      "character": "xReacher"
+    },
+    {
+      "itemId": "silver-ingot",
+      "quantity": "17",
+      "gameTimestamp": "09.09.2026 - 20:55",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "copper-ingot",
+      "quantity": "24",
+      "gameTimestamp": "09.09.2026 - 20:53",
+      "character": "xReacher"
+    },
+    {
+      "itemId": "cobalt-ingot",
+      "quantity": "31",
+      "gameTimestamp": "09.09.2026 - 20:51",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "iron-ingot",
+      "quantity": "38",
+      "gameTimestamp": "09.09.2026 - 20:49",
+      "character": "xReacher"
+    },
+    {
+      "itemId": "obsidian",
+      "quantity": "45",
+      "gameTimestamp": "09.09.2026 - 20:47",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "purified-veltryn",
+      "quantity": "52",
+      "gameTimestamp": "09.09.2026 - 20:45",
+      "character": "xReacher"
+    },
+    {
+      "itemId": "mithrilium",
+      "quantity": "59",
+      "gameTimestamp": "09.09.2026 - 20:43",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "ruby",
+      "quantity": "66",
+      "gameTimestamp": "09.09.2026 - 20:41",
+      "character": "xReacher"
+    },
+    {
+      "itemId": "silver-coin",
+      "quantity": "1250000",
+      "gameTimestamp": "09.09.2026 - 20:39",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "fragment-ring-of-night",
+      "quantity": "80",
+      "gameTimestamp": "09.09.2026 - 20:37",
+      "character": "xReacher"
+    },
+    {
+      "itemId": "fragment-pirates-earring",
+      "quantity": "87",
+      "gameTimestamp": "09.09.2026 - 20:35",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "fragment-necklace-of-starlight",
+      "quantity": "94",
+      "gameTimestamp": "09.09.2026 - 20:33",
+      "character": "xReacher"
+    },
+    {
+      "itemId": "fragment-bracelet-of-faith",
+      "quantity": "101",
+      "gameTimestamp": "09.09.2026 - 20:31",
+      "character": "Leftaltar"
+    }
+  ]
+}
