@@ -1,0 +1,23 @@
+{
+  "_comment": "CLAUDE.md decision 7. Quantities are strings so they stay bigint-safe. Every Elite needs `fragmentQty` of its own blueprint fragment plus the shared list.",
+  "fragmentQty": "100",
+  "shared": [
+    { "itemId": "nyxium", "qty": "100" },
+    { "itemId": "gold-ingot", "qty": "20000" },
+    { "itemId": "silver-ingot", "qty": "20000" },
+    { "itemId": "copper-ingot", "qty": "20000" },
+    { "itemId": "cobalt-ingot", "qty": "20000" },
+    { "itemId": "iron-ingot", "qty": "20000" },
+    { "itemId": "obsidian", "qty": "20000" },
+    { "itemId": "purified-veltryn", "qty": "2500" },
+    { "itemId": "mithrilium", "qty": "2500" },
+    { "itemId": "ruby", "qty": "2000" },
+    { "itemId": "silver-coin", "qty": "10000000000" }
+  ],
+  "elites": [
+    { "eliteType": "ring", "name": "Ring of Night", "fragmentItemId": "fragment-ring-of-night" },
+    { "eliteType": "earring", "name": "Pirate's Earring", "fragmentItemId": "fragment-pirates-earring" },
+    { "eliteType": "necklace", "name": "Necklace of Starlight", "fragmentItemId": "fragment-necklace-of-starlight" },
+    { "eliteType": "bracelet", "name": "Bracelet of Faith", "fragmentItemId": "fragment-bracelet-of-faith" }
+  ]
+}
