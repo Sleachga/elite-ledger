@@ -1,0 +1,106 @@
+{
+  "looksLikeBankLog": true,
+  "rows": [
+    {
+      "itemId": "nyxium",
+      "iconDescription": "Synthetic fixture: drawn from the nyxium reference icon.",
+      "quantity": "",
+      "gameTimestamp": "06.09.2026 - 23:21",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "nyxium",
+      "iconDescription": "Synthetic fixture: drawn from the nyxium reference icon.",
+      "quantity": "",
+      "gameTimestamp": "06.09.2026 - 23:21",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "nyxium",
+      "iconDescription": "Synthetic fixture: drawn from the nyxium reference icon.",
+      "quantity": "",
+      "gameTimestamp": "06.09.2026 - 23:21",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "nyxium",
+      "iconDescription": "Synthetic fixture: drawn from the nyxium reference icon.",
+      "quantity": "",
+      "gameTimestamp": "06.09.2026 - 23:20",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "gold-ingot",
+      "iconDescription": "Synthetic fixture: drawn from the gold-ingot reference icon.",
+      "quantity": "112",
+      "gameTimestamp": "06.09.2026 - 23:19",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "mithrilium",
+      "iconDescription": "Synthetic fixture: drawn from the mithrilium reference icon.",
+      "quantity": "100",
+      "gameTimestamp": "06.09.2026 - 23:18",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "obsidian",
+      "iconDescription": "Synthetic fixture: drawn from the obsidian reference icon.",
+      "quantity": "1000",
+      "gameTimestamp": "06.09.2026 - 23:18",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "ruby",
+      "iconDescription": "Synthetic fixture: drawn from the ruby reference icon.",
+      "quantity": "37",
+      "gameTimestamp": "06.09.2026 - 23:17",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "purified-veltryn",
+      "iconDescription": "Synthetic fixture: drawn from the purified-veltryn reference icon.",
+      "quantity": "250",
+      "gameTimestamp": "06.09.2026 - 23:15",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-ring-of-night",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-ring-of-night reference icon.",
+      "quantity": "4",
+      "gameTimestamp": "06.09.2026 - 23:14",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    }
+  ],
+  "notes": []
+}

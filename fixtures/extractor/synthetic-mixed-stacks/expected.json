@@ -1,0 +1,65 @@
+{
+  "looksLikeBankLog": true,
+  "rows": [
+    {
+      "itemId": "nyxium",
+      "quantity": "1",
+      "gameTimestamp": "06.09.2026 - 23:21",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "nyxium",
+      "quantity": "1",
+      "gameTimestamp": "06.09.2026 - 23:21",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "nyxium",
+      "quantity": "1",
+      "gameTimestamp": "06.09.2026 - 23:21",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "nyxium",
+      "quantity": "1",
+      "gameTimestamp": "06.09.2026 - 23:20",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "gold-ingot",
+      "quantity": "112",
+      "gameTimestamp": "06.09.2026 - 23:19",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "mithrilium",
+      "quantity": "100",
+      "gameTimestamp": "06.09.2026 - 23:18",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "obsidian",
+      "quantity": "1000",
+      "gameTimestamp": "06.09.2026 - 23:18",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "ruby",
+      "quantity": "37",
+      "gameTimestamp": "06.09.2026 - 23:17",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "purified-veltryn",
+      "quantity": "250",
+      "gameTimestamp": "06.09.2026 - 23:15",
+      "character": "Leftaltar"
+    },
+    {
+      "itemId": "fragment-ring-of-night",
+      "quantity": "4",
+      "gameTimestamp": "06.09.2026 - 23:14",
+      "character": "Leftaltar"
+    }
+  ]
+}

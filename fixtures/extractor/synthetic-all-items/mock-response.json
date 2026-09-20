@@ -1,0 +1,156 @@
+{
+  "looksLikeBankLog": true,
+  "rows": [
+    {
+      "itemId": "nyxium",
+      "iconDescription": "Synthetic fixture: drawn from the nyxium reference icon.",
+      "quantity": "3",
+      "gameTimestamp": "09.09.2026 - 20:59",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "gold-ingot",
+      "iconDescription": "Synthetic fixture: drawn from the gold-ingot reference icon.",
+      "quantity": "10",
+      "gameTimestamp": "09.09.2026 - 20:57",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "silver-ingot",
+      "iconDescription": "Synthetic fixture: drawn from the silver-ingot reference icon.",
+      "quantity": "17",
+      "gameTimestamp": "09.09.2026 - 20:55",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "copper-ingot",
+      "iconDescription": "Synthetic fixture: drawn from the copper-ingot reference icon.",
+      "quantity": "24",
+      "gameTimestamp": "09.09.2026 - 20:53",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "cobalt-ingot",
+      "iconDescription": "Synthetic fixture: drawn from the cobalt-ingot reference icon.",
+      "quantity": "31",
+      "gameTimestamp": "09.09.2026 - 20:51",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "iron-ingot",
+      "iconDescription": "Synthetic fixture: drawn from the iron-ingot reference icon.",
+      "quantity": "38",
+      "gameTimestamp": "09.09.2026 - 20:49",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "obsidian",
+      "iconDescription": "Synthetic fixture: drawn from the obsidian reference icon.",
+      "quantity": "45",
+      "gameTimestamp": "09.09.2026 - 20:47",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "purified-veltryn",
+      "iconDescription": "Synthetic fixture: drawn from the purified-veltryn reference icon.",
+      "quantity": "52",
+      "gameTimestamp": "09.09.2026 - 20:45",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "mithrilium",
+      "iconDescription": "Synthetic fixture: drawn from the mithrilium reference icon.",
+      "quantity": "59",
+      "gameTimestamp": "09.09.2026 - 20:43",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "ruby",
+      "iconDescription": "Synthetic fixture: drawn from the ruby reference icon.",
+      "quantity": "66",
+      "gameTimestamp": "09.09.2026 - 20:41",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "silver-coin",
+      "iconDescription": "Synthetic fixture: drawn from the silver-coin reference icon.",
+      "quantity": "1,250,000",
+      "gameTimestamp": "09.09.2026 - 20:39",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-ring-of-night",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-ring-of-night reference icon.",
+      "quantity": "80",
+      "gameTimestamp": "09.09.2026 - 20:37",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-pirates-earring",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-pirates-earring reference icon.",
+      "quantity": "87",
+      "gameTimestamp": "09.09.2026 - 20:35",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-necklace-of-starlight",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-necklace-of-starlight reference icon.",
+      "quantity": "94",
+      "gameTimestamp": "09.09.2026 - 20:33",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-bracelet-of-faith",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-bracelet-of-faith reference icon.",
+      "quantity": "101",
+      "gameTimestamp": "09.09.2026 - 20:31",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    }
+  ],
+  "notes": []
+}
