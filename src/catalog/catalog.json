@@ -1,0 +1,136 @@
+{
+  "source": {
+    "name": "Quinfall Codex",
+    "url": "https://thequinfall-codex.com/items",
+    "iconBase": "https://thequinfall-codex.com/items/icons/",
+    "gamePatch": "1.0.0.32",
+    "codexDataUpdated": "2026-05-31",
+    "fetchedAt": "2026-09-20"
+  },
+  "items": [
+    {
+      "id": "nyxium",
+      "name": "Nyxium",
+      "rarity": "legendary",
+      "icon": "material_icon1_13163.png",
+      "aliases": [],
+      "kind": "material"
+    },
+    {
+      "id": "gold-ingot",
+      "name": "Gold Ingot",
+      "rarity": "common",
+      "icon": "material_icon1_13138.png",
+      "aliases": ["Gold"],
+      "kind": "material"
+    },
+    {
+      "id": "silver-ingot",
+      "name": "Silver Ingot",
+      "rarity": "common",
+      "icon": "material_icon1_13137.png",
+      "aliases": [],
+      "kind": "material"
+    },
+    {
+      "id": "copper-ingot",
+      "name": "Copper Ingot",
+      "rarity": "common",
+      "icon": "material_icon1_13136.png",
+      "aliases": ["Copper"],
+      "kind": "material"
+    },
+    {
+      "id": "cobalt-ingot",
+      "name": "Cobalt Ingot",
+      "rarity": "common",
+      "icon": "material_icon1_13139.png",
+      "aliases": ["Cobalt"],
+      "kind": "material"
+    },
+    {
+      "id": "iron-ingot",
+      "name": "Iron Ingot",
+      "rarity": "common",
+      "icon": "material_icon1_13135.png",
+      "aliases": ["Iron"],
+      "kind": "material"
+    },
+    {
+      "id": "obsidian",
+      "name": "Obsidian",
+      "rarity": "common",
+      "icon": "material_icon1_12307.png",
+      "aliases": [],
+      "kind": "material"
+    },
+    {
+      "id": "purified-veltryn",
+      "name": "Purified Veltryn",
+      "rarity": "rare",
+      "icon": "material_icon1_13353.png",
+      "aliases": ["Veltryn"],
+      "kind": "material"
+    },
+    {
+      "id": "mithrilium",
+      "name": "Mithrilium",
+      "rarity": "rare",
+      "icon": "material_icon1_13161.png",
+      "aliases": ["Mithrilium Ingot"],
+      "kind": "material"
+    },
+    {
+      "id": "ruby",
+      "name": "Ruby",
+      "rarity": "common",
+      "icon": "material_icon1_13308.png",
+      "aliases": [],
+      "kind": "material"
+    },
+    {
+      "id": "silver-coin",
+      "name": "Silver Coin",
+      "rarity": "common",
+      "icon": "silver_coin_placeholder.png",
+      "aliases": ["Silver", "Silver Coins", "Coins"],
+      "kind": "currency"
+    },
+    {
+      "id": "fragment-ring-of-night",
+      "name": "[Blueprint Fragment] Ring of Night",
+      "rarity": "mythic",
+      "icon": "material_icon1_14104.png",
+      "aliases": ["Ring of Night Fragment", "Ring of Night", "Night Ring Fragment"],
+      "kind": "fragment",
+      "eliteType": "ring"
+    },
+    {
+      "id": "fragment-pirates-earring",
+      "name": "[Blueprint Fragment] Pirate's Earring",
+      "rarity": "mythic",
+      "icon": "material_icon1_14103.png",
+      "aliases": ["Pirate's Earring Fragment", "Pirate's Earring"],
+      "kind": "fragment",
+      "eliteType": "earring"
+    },
+    {
+      "id": "fragment-necklace-of-starlight",
+      "name": "[Blueprint Fragment] Necklace of Starlight",
+      "rarity": "mythic",
+      "icon": "material_icon1_14101.png",
+      "aliases": ["Necklace of Starlight Fragment", "Necklace of Starlight"],
+      "kind": "fragment",
+      "eliteType": "necklace"
+    },
+    {
+      "id": "fragment-bracelet-of-faith",
+      "name": "[Blueprint Fragment] Bracelet of Faith",
+      "rarity": "mythic",
+      "icon": "material_icon1_14102.png",
+      "aliases": ["Bracelet of Faith Fragment", "Bracelet of Faith"],
+      "kind": "fragment",
+      "eliteType": "bracelet"
+    }
+  ]
+}
