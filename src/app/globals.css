@@ -1,0 +1,28 @@
+html {
+  color-scheme: dark;
+  /* Matches Radix slate dark --color-background so there is no flash before the theme paints. */
+  background-color: #111113;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  max-width: 100%;
+  /* A page never scrolls sideways. `clip` (not `hidden`) keeps position: sticky working. */
+  overflow-x: clip;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.radix-themes {
+  min-height: 100dvh;
+}
+
+img {
+  max-width: 100%;
+}
