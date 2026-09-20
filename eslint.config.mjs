@@ -10,6 +10,30 @@ export default defineConfig([
     files: ["scripts/**/*.cjs"],
     rules: { "@typescript-eslint/no-require-imports": "off" },
   },
+  {
+    // The Extractor is the only module allowed to talk to the Claude API.
+    files: ["**/*.{js,mjs,cjs,ts,mts,cts,tsx}"],
+    ignores: ["src/modules/extractor/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@anthropic-ai/sdk",
+              message: "Only src/modules/extractor may import the Anthropic SDK. Call extract() instead.",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@anthropic-ai/sdk/*"],
+              message: "Only src/modules/extractor may import the Anthropic SDK. Call extract() instead.",
+            },
+          ],
+        },
+      ],
+    },
+  },
   globalIgnores([
     ".next/**",
     "out/**",
