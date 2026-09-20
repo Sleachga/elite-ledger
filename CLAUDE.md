@@ -56,8 +56,41 @@ Leadership uses the data to decide who receives crafted Elites.
 ## UI & workflow
 
 - **UI kit** — Radix Themes (simple, default-ish theme) + Framer Motion for
-  interactions and page/element transitions. No custom design system yet;
-  design decisions from the design grill are recorded below as they land.
+  interactions and page/element transitions. No custom design system.
+
+### Design decisions (design grill, 2026-09-20)
+
+- **Dark only** — Radix `appearance="dark"`, `grayColor="slate"`,
+  `accentColor="amber"`. Game flavor comes only from item icons and their
+  rarity-colored borders; chrome stays neutral. Typography = Radix default.
+- **Header** — guild name as the wordmark (small amber mark + name);
+  "Elite Ledger" is the page title/tagline. Guild name: TBD (ask Sandy).
+- **Mobile-first** — every screen designed at 390px first; Radix responsive
+  props; a page never scrolls sideways. Desktop: top bar (Progress ·
+  Contributors · Ledger · Crafts · Audit, "Upload" as the one filled amber
+  button, avatar menu holds Admin/sign-out). Mobile: bottom tab bar —
+  Progress · Contributors · **Upload** (center) · Ledger · More.
+- **Progress home** — hero strip (Elites crafted · % to next · Elites' worth
+  of shared mats · last synced), then "Shared materials" bars sorted by %
+  complete ascending (bottleneck on top), then "Blueprint fragments" (4 bars,
+  "→ N craftable"), then Recent deposits. Bars stack full-width on mobile;
+  hero becomes 2×2.
+- **Tables** — dense: Radix `Table size="1"`, sticky header, right-aligned
+  numbers with separators, row hover, click → screenshot side panel (desktop)
+  / bottom sheet (mobile). On phones the Ledger becomes a list (icon · qty ·
+  character · time-ago); Contributors stays a table with the member column
+  pinned and materials scrolling inside the table.
+- **Verify screen** — desktop: screenshot left, rows right. Mobile:
+  screenshot on top (pinch-zoom), rows below, sticky Confirm bar.
+- **ItemChip** — one component everywhere: 20–24px icon (40px in Progress
+  bars) with a 1px rarity-colored border, name, optional qty badge, full name
+  on hover. Rarity → Radix color mapping lives in the catalog, never
+  per-component.
+- **Motion (Framer Motion, 200–300ms ease-out, honors reduced-motion)** —
+  bars fill from 0 on load and tween on change; hero numbers count up; verify
+  rows stagger in; confirmed rows slide into the Ledger, deleted rows
+  collapse; side panel slides from the right; pages fade/slide; low-confidence
+  rows pulse once then hold a static highlight. Nothing else moves.
 - **Testing** — verify UI changes in the built-in browser (Claude desktop
   browser pane), not just unit tests. Mute any audio first.
 - **Implementation** — use subagents for parallelisable slice work; keep the
