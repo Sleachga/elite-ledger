@@ -165,3 +165,13 @@ folder with a hand-checked `expected.json`.
 - `src/app/` Next.js App Router pages (`/` is Progress; other routes are placeholders)
 - `drizzle/` generated SQL migrations (committed)
 - `scripts/` `tsx` entry points for migrate / seed / extractor eval / fixture drawing
+
+## Secrets
+
+Secrets live in 1Password, never in the repo or in chat. `.env.tpl` holds
+`op://` references only.
+
+```sh
+op run --env-file=.env.tpl -- pnpm eval:extractor   # run with secrets injected
+op inject -i .env.tpl -o .env                        # or write a local .env (gitignored)
+```
