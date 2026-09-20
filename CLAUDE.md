@@ -33,6 +33,10 @@ Leadership uses the data to decide who receives crafted Elites.
    Nyxium 100 · Gold/Silver/Copper/Cobalt/Iron Ingot 20,000 each (total incl.
    Nyxium's own cost) · Obsidian 20,000 · Veltryn 2,500 · Mithrilium Ingot
    2,500 · Ruby 2,000 · Silver Coin 10,000,000,000. No point weights.
+   Codex names differ slightly ("Purified Veltryn", "Mithrilium"); the catalog
+   keeps Sandy's names as aliases. **Unverified:** the codex Nyxium recipe
+   implies 600 Obsidian per Nyxium (60,000 per Elite); Sandy's list says
+   20,000 and is used until he checks in-game.
 8. **Crafts log (public)** — admin records each crafted Elite: type,
    recipient, date, recorded-by. Subtracts recipe quantities from *stock*,
    never from anyone's contributions. Per-member cap: 2 rings, 2 earrings,
