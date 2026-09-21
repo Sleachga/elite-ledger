@@ -157,10 +157,22 @@ folder with a hand-checked `expected.json`.
 ## Playground (`/try`)
 
 `/try` is a throwaway page for testing the Extractor on real screenshots before
-login and the ledger exist: drop, paste (Win+Shift+S, then Ctrl+V) or pick a
-PNG / JPEG / WebP up to 10 MB and it shows the parsed deposit rows with
+login and the ledger exist: drop, paste (Win+Shift+S, then Ctrl+V) or pick PNG /
+JPEG / WebP files up to 10 MB each and it shows the parsed deposit rows with
 confidence, per-item totals, warnings, characters, and the model, duration and
-token usage. **Nothing is saved.** Until the real upload flow lands, the Upload
+token usage. **Nothing is saved.**
+
+It takes **several screenshots at once**, up to **20 per batch** (extra files
+are ignored with a message, exact duplicates are skipped, and more can be added
+while others are still being read). Each image is its own request; a
+client-side queue runs **two at a time** (`QUEUE_CONCURRENCY`), so every body
+stays under the host's upload cap and every call under `maxDuration`. A bad
+file becomes a failed line in the list and never blocks the rest; failed reads
+can be retried one by one or all together, and "Clear all" aborts whatever is
+in flight. A summary strip on top adds up the finished images: rows, rows to
+double-check, warnings, read time, combined per-item totals and rows per
+character. The queue is a pure reducer in `src/modules/playground/queue.ts`;
+the batch numbers live in `summary.ts` beside it. Until the real upload flow lands, the Upload
 button and the mobile Upload tab point here (`UPLOAD_HREF` in
 `src/components/shell/nav.ts`; set it back to `"/upload"` to revert).
 
@@ -170,11 +182,14 @@ calls `extract()` and returns `{ result, durationMs }` or
 
 - **Passcode.** With `TRY_PASSCODE` set, the request must carry it in the
   `x-try-passcode` header (the page asks once and keeps it in
-  `sessionStorage`). In production it is always gated: on Vercel (`VERCEL`
+  `sessionStorage`; a 401 pauses the queue, asks again, and resumes the
+  remaining images). In production it is always gated: on Vercel (`VERCEL`
   set) with no `TRY_PASSCODE` the route answers 503 "playground disabled".
   Locally with no passcode it is open. Set `TRY_PASSCODE` and
   `ANTHROPIC_API_KEY` in the Vercel project's environment variables.
-- **Rate limit.** 10 requests per 10 minutes per IP, in memory, best effort.
+- **Rate limit.** 60 requests per 10 minutes per IP (room for a few 20-image
+  batches plus retries), in memory, best effort. A 429 carries `Retry-After`,
+  and the page shows the wait on the failed image.
 - `GET /api/try-extract` returns `{ passcodeRequired, enabled }`.
 
 Run it locally with the secrets from 1Password:
@@ -186,7 +201,8 @@ op run --env-file=.env.tpl -- pnpm dev      # then open http://localhost:3000/tr
 On Vercel the reference icons reach the function through
 `outputFileTracingIncludes` in `next.config.ts` (`extract()` reads
 `<cwd>/public/icons` from disk). Vercel also caps request bodies at about
-4.5 MB, below the route's own 10 MB limit; crop very large screenshots.
+4.5 MB, below the route's own 10 MB limit; the page warns on any image over
+4.5 MB. Crop very large screenshots.
 
 ## Layout
 

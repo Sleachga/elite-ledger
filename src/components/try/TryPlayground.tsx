@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { Box, Button, Callout, Card, Flex, Grid, Progress, Spinner, Text, TextField } from "@radix-ui/themes";
+import { useEffect, useEffectEvent, useReducer, useRef, useState, useSyncExternalStore } from "react";
+import { Box, Button, Callout, Card, Flex, Grid, Heading, Text, TextField } from "@radix-ui/themes";
 import { NavIcon } from "@/components/shell/NavIcons";
 import {
   ACCEPTED_MEDIA_TYPES,
@@ -9,26 +9,29 @@ import {
   PASSCODE_HEADER,
   TRY_EXTRACT_ENDPOINT,
   errorText,
-  validateImageFile,
-  type PlaygroundErrorBody,
   type PlaygroundStatusBody,
-  type PlaygroundSuccessBody,
 } from "@/modules/playground";
-import { TryResult } from "./TryResult";
+import {
+  MAX_BATCH_IMAGES,
+  QUEUE_CONCURRENCY,
+  batchNotes,
+  hasRetryableFailures,
+  initialQueueState,
+  interpretResponse,
+  pickStartable,
+  planBatch,
+  queueReducer,
+  resolveSelection,
+  type BatchNotes,
+  type NewEntry,
+  type QueueEntry,
+} from "@/modules/playground/queue";
+import { EntryCards, EntryDetail, EntryRail, type EntryActions } from "./TryEntries";
+import { TrySummary } from "./TrySummary";
 import styles from "./TryPlayground.module.css";
 
 const PASSCODE_STORAGE_KEY = "elite-ledger:try-passcode";
-
-type Phase =
-  | { name: "idle" }
-  | { name: "reading"; startedAt: number }
-  | { name: "done"; body: PlaygroundSuccessBody }
-  | { name: "error"; kind: string; detail?: string };
-
-interface Shot {
-  file: File;
-  url: string;
-}
+const DESKTOP_QUERY = "(min-width: 1024px)";
 
 function readStoredPasscode(): string {
   try {
@@ -47,80 +50,59 @@ function storePasscode(value: string | null): void {
   }
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+function subscribeToDesktop(onChange: () => void): () => void {
+  const query = window.matchMedia(DESKTOP_QUERY);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
 }
 
-function isSuccessBody(body: unknown): body is PlaygroundSuccessBody {
-  return typeof body === "object" && body !== null && "result" in body && "durationMs" in body;
+/** Rail + detail from 1024px, stacked cards below. Phones first: the server renders the cards. */
+function useIsDesktop(): boolean {
+  return useSyncExternalStore(
+    subscribeToDesktop,
+    () => window.matchMedia(DESKTOP_QUERY).matches,
+    () => false,
+  );
 }
 
-function isErrorBody(body: unknown): body is PlaygroundErrorBody {
-  if (typeof body !== "object" || body === null || !("error" in body)) return false;
-  const error = (body as { error: unknown }).error;
-  return typeof error === "object" && error !== null && "kind" in error;
+/** Every file of a drop. A file that is not an image still gets its (failed) line in the list. */
+function droppedFiles(data: DataTransfer | null): File[] {
+  return data ? Array.from(data.files) : [];
 }
 
-/** The first image file in a drop or paste, if there is one. */
-function firstImage(data: DataTransfer | null): File | null {
-  if (!data) return null;
-  for (const file of data.files) {
-    if (file.type.startsWith("image/")) return file;
-  }
+/** Every image of a paste; a paste may carry more than one. Text pastes give none. */
+function pastedImages(data: DataTransfer | null): File[] {
+  if (!data) return [];
+  const fromFiles = Array.from(data.files).filter((file) => file.type.startsWith("image/"));
+  if (fromFiles.length > 0) return fromFiles;
+  const images: File[] = [];
   for (const item of data.items) {
     if (item.kind === "file" && item.type.startsWith("image/")) {
       const file = item.getAsFile();
-      if (file) return file;
+      if (file) images.push(file);
     }
   }
-  return null;
-}
-
-function Reading({ startedAt }: { startedAt: number }) {
-  const [elapsed, setElapsed] = useState(0);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startedAt) / 1000));
-    }, 500);
-    return () => window.clearInterval(id);
-  }, [startedAt]);
-
-  return (
-    <Card size="2" role="status" aria-live="polite">
-      <Flex direction="column" gap="3">
-        <Flex align="center" justify="between" gap="3">
-          <Flex align="center" gap="2">
-            <Spinner size="2" />
-            <Text size="3" weight="medium">
-              Reading…
-            </Text>
-          </Flex>
-          <Text size="2" color="gray" style={{ fontVariantNumeric: "tabular-nums" }}>
-            {elapsed} s
-          </Text>
-        </Flex>
-        {/* No value = indeterminate; Radix fills it over `duration`, then holds. */}
-        <Progress size="1" duration="20s" aria-label="Reading the screenshot" />
-        <Text size="2" color="gray">
-          Claude is reading the screenshot row by row. This usually takes 10–20 seconds.
-        </Text>
-      </Flex>
-    </Card>
-  );
+  return images;
 }
 
 export function TryPlayground() {
   const [status, setStatus] = useState<PlaygroundStatusBody | null>(null);
   const [passcode, setPasscode] = useState("");
-  const [passcodeAccepted, setPasscodeAccepted] = useState(false);
-  const [shot, setShot] = useState<Shot | null>(null);
-  const [phase, setPhase] = useState<Phase>({ name: "idle" });
-  const [pickError, setPickError] = useState<string | null>(null);
+  const [passcodeRejected, setPasscodeRejected] = useState(false);
+  const [queue, dispatch] = useReducer(queueReducer<File>, undefined, initialQueueState<File>);
+  const [notes, setNotes] = useState<BatchNotes>({ cap: null, duplicates: null });
   const [dragOver, setDragOver] = useState(false);
-  const abortRef = useRef<AbortController | null>(null);
+  /** The user's own choice of entry: undefined = none yet, null = closed everything (cards). */
+  const [picked, setPicked] = useState<string | null | undefined>(undefined);
+
+  const controllers = useRef(new Map<string, AbortController>());
+  const liveUrls = useRef(new Set<string>());
+  const nextId = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const isDesktop = useIsDesktop();
+
+  const { entries, paused } = queue;
+  const disabled = status !== null && !status.enabled;
 
   // Ask the server whether a passcode is needed; reuse one from this tab's session.
   useEffect(() => {
@@ -129,38 +111,49 @@ export function TryPlayground() {
       .then((response) => response.json() as Promise<PlaygroundStatusBody>)
       .then((body) => {
         setStatus(body);
+        if (!body.passcodeRequired) return;
         const stored = readStoredPasscode();
-        if (body.passcodeRequired && stored !== "") {
-          setPasscode(stored);
-          setPasscodeAccepted(true);
-        }
+        if (stored !== "") setPasscode(stored);
+        else dispatch({ type: "pause" }); // nothing is sent until a passcode is entered
       })
       .catch(() => {
-        // Unknown status: the POST itself will say what is wrong.
+        // Unknown status: the first POST will say what is wrong.
       });
     return () => controller.abort();
   }, []);
 
-  // Free the preview's object URL when the screenshot changes or the page unmounts.
+  // Free the object URLs of entries that left the list (remove, clear all).
   useEffect(() => {
-    if (!shot) return;
-    return () => URL.revokeObjectURL(shot.url);
-  }, [shot]);
+    const current = new Set(entries.flatMap((entry) => (entry.previewUrl ? [entry.previewUrl] : [])));
+    for (const url of liveUrls.current) {
+      if (!current.has(url)) URL.revokeObjectURL(url);
+    }
+    liveUrls.current = current;
+  }, [entries]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  // Leaving the page: stop every request and free every preview.
+  useEffect(() => {
+    const inFlight = controllers.current;
+    const urls = liveUrls;
+    return () => {
+      for (const controller of inFlight.values()) controller.abort();
+      inFlight.clear();
+      for (const url of urls.current) URL.revokeObjectURL(url);
+      urls.current = new Set();
+    };
+  }, []);
 
-  const disabled = status !== null && !status.enabled;
-  const needsPasscode = status?.passcodeRequired === true && !passcodeAccepted;
-  const reading = phase.name === "reading";
-
-  async function run(file: File, code: string) {
-    abortRef.current?.abort();
+  /** One request for one image. The reducer ignores the answer if the entry moved on meanwhile. */
+  async function read(entry: QueueEntry<File>, code: string) {
     const controller = new AbortController();
-    abortRef.current = controller;
-    setPhase({ name: "reading", startedAt: Date.now() });
+    controllers.current.set(entry.id, controller);
+    const release = () => {
+      if (controllers.current.get(entry.id) === controller) controllers.current.delete(entry.id);
+    };
+    dispatch({ type: "start", id: entry.id, now: Date.now() });
 
     const form = new FormData();
-    form.append(IMAGE_FIELD, file, file.name || "screenshot");
+    form.append(IMAGE_FIELD, entry.file, entry.file.name || "screenshot");
     const headers: Record<string, string> = {};
     // Header values must be printable ASCII; anything else cannot be the passcode.
     if (code !== "" && /^[\x20-\x7e]+$/.test(code)) headers[PASSCODE_HEADER] = code;
@@ -174,11 +167,17 @@ export function TryPlayground() {
         signal: controller.signal,
       });
     } catch {
+      release();
       if (controller.signal.aborted) return;
-      setPhase({
-        name: "error",
-        kind: "unreachable",
-        detail: "Could not reach the server. Check your connection and try again.",
+      dispatch({
+        type: "fail",
+        id: entry.id,
+        now: Date.now(),
+        error: {
+          kind: "unreachable",
+          message: "Could not reach the server. Check your connection and try again.",
+          retryable: true,
+        },
       });
       return;
     }
@@ -187,75 +186,94 @@ export function TryPlayground() {
     try {
       body = await response.json();
     } catch {
-      // Not JSON: the host answered instead of the app (see the 413 case below).
+      // Not JSON: the host answered instead of the app (a 413, for one).
     }
+    release();
     if (controller.signal.aborted) return;
 
-    if (response.ok && isSuccessBody(body)) {
+    const outcome = interpretResponse(response.status, body, response.headers.get("Retry-After"), Date.now());
+    if (outcome.type === "success") {
       if (code !== "") {
         storePasscode(code);
-        setPasscodeAccepted(true);
+        setPasscodeRejected(false);
       }
-      setPhase({ name: "done", body });
-      return;
+      dispatch({ type: "succeed", id: entry.id, body: outcome.body, now: Date.now() });
+    } else if (outcome.type === "unauthorized") {
+      // Back in line; the queue waits until a passcode is entered.
+      storePasscode(null);
+      setPasscodeRejected(code !== "");
+      setStatus((current) => ({ enabled: current?.enabled ?? true, passcodeRequired: true }));
+      dispatch({ type: "unauthorized", id: entry.id });
+    } else {
+      dispatch({ type: "fail", id: entry.id, error: outcome.error, now: Date.now() });
     }
+  }
 
-    if (isErrorBody(body)) {
-      if (body.error.kind === "unauthorized") {
-        storePasscode(null);
-        setPasscodeAccepted(false);
-        setStatus((current) => ({ enabled: current?.enabled ?? true, passcodeRequired: true }));
-      }
-      setPhase({ name: "error", kind: body.error.kind, detail: body.error.message });
-      return;
+  // The queue runner: after every change, start whatever the reducer's picker hands over.
+  const pump = useEffectEvent(() => {
+    if (disabled) return;
+    for (const entry of pickStartable(queue, QUEUE_CONCURRENCY)) {
+      if (controllers.current.has(entry.id)) continue;
+      void read(entry, passcode.trim());
     }
-    if (response.status === 413) {
-      setPhase({
-        name: "error",
-        kind: "too_large",
-        detail:
-          "The host rejected the upload before it reached the app. Vercel caps request bodies at about 4.5 MB; crop the screenshot or save it as JPEG.",
-      });
-      return;
-    }
-    setPhase({
-      name: "error",
-      kind: response.status === 504 ? "network" : "api",
-      detail: `The server answered with HTTP ${response.status}.`,
+  });
+
+  useEffect(() => {
+    pump();
+  }, [queue, disabled]);
+
+  function abort(id: string) {
+    controllers.current.get(id)?.abort();
+    controllers.current.delete(id);
+  }
+
+  function addFiles(files: File[]) {
+    if (disabled || files.length === 0) return;
+    const plan = planBatch(
+      entries.map((entry) => entry.file),
+      files,
+      MAX_BATCH_IMAGES,
+    );
+    setNotes(batchNotes(plan, MAX_BATCH_IMAGES));
+    if (plan.accepted.length === 0) return;
+
+    const items: NewEntry<File>[] = plan.accepted.map((file) => {
+      nextId.current += 1;
+      // Anything the browser calls an image gets a preview, even one the reducer will refuse.
+      const previewUrl = file.type.startsWith("image/") && file.size > 0 ? URL.createObjectURL(file) : null;
+      if (previewUrl) liveUrls.current.add(previewUrl);
+      return { id: `shot-${nextId.current}`, file, previewUrl };
     });
+    dispatch({ type: "enqueue", items, now: Date.now() });
   }
 
-  function choose(file: File) {
-    if (reading || disabled) return;
-    const problem = validateImageFile(file);
-    if (problem) {
-      setPickError(errorText(problem));
-      return;
-    }
-    setPickError(null);
-    setShot({ file, url: URL.createObjectURL(file) });
-    if (needsPasscode && passcode.trim() === "") {
-      // Wait for the passcode; "Read screenshot" starts the run.
-      setPhase({ name: "idle" });
-      return;
-    }
-    void run(file, passcode.trim());
-  }
-
-  function tryAnother() {
-    abortRef.current?.abort();
-    setShot(null);
-    setPickError(null);
-    setPhase({ name: "idle" });
+  function clearAll() {
+    for (const controller of controllers.current.values()) controller.abort();
+    controllers.current.clear();
+    dispatch({ type: "clear" });
+    setNotes({ cap: null, duplicates: null });
+    setPicked(undefined);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  const actions: EntryActions = {
+    onRetry: (id) => dispatch({ type: "retry", id }),
+    onCancel: (id) => {
+      abort(id);
+      dispatch({ type: "cancel", id });
+    },
+    onRemove: (id) => {
+      abort(id);
+      dispatch({ type: "remove", id });
+    },
+  };
+
   // Win+Shift+S then Ctrl+V. Text pastes (the passcode field) are left alone.
   const onPaste = useEffectEvent((event: ClipboardEvent) => {
-    const file = firstImage(event.clipboardData);
-    if (!file) return;
+    const images = pastedImages(event.clipboardData);
+    if (images.length === 0) return;
     event.preventDefault();
-    choose(file);
+    addFiles(images);
   });
 
   useEffect(() => {
@@ -264,14 +282,21 @@ export function TryPlayground() {
     return () => window.removeEventListener("paste", listener);
   }, []);
 
-  const canSubmitPasscode = shot !== null && !reading && passcode.trim() !== "";
+  const hasEntries = entries.length > 0;
+  // Desktop always shows an entry; on phones a card opens by itself only once it has a result.
+  const selectedId = resolveSelection(entries, isDesktop && picked === null ? undefined : picked, isDesktop);
+  const selected = entries.find((entry) => entry.id === selectedId) ?? null;
+  const waiting = entries.filter((entry) => entry.state === "queued").length;
+  const full = entries.length >= MAX_BATCH_IMAGES;
 
-  const passcodeForm = needsPasscode && (
+  const passcodeForm = paused && !disabled && (
     <Card size="2">
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (shot && canSubmitPasscode) void run(shot.file, passcode.trim());
+          if (passcode.trim() === "") return;
+          setPasscodeRejected(false);
+          dispatch({ type: "resume" });
         }}
       >
         <Flex direction="column" gap="2">
@@ -286,16 +311,23 @@ export function TryPlayground() {
                 autoComplete="off"
                 placeholder="Ask Sandy"
                 value={passcode}
+                color={passcodeRejected ? "red" : undefined}
+                aria-invalid={passcodeRejected || undefined}
+                aria-describedby="try-passcode-help"
                 onChange={(event) => setPasscode(event.target.value)}
               />
             </Box>
-            {shot && (
-              <Button type="submit" disabled={!canSubmitPasscode}>
-                Read screenshot
-              </Button>
-            )}
+            <Button type="submit" disabled={passcode.trim() === ""}>
+              {waiting === 0 ? "Continue" : waiting === 1 ? "Read screenshot" : `Read ${waiting} screenshots`}
+            </Button>
           </Flex>
-          <Text size="1" color="gray">
+          {passcodeRejected && (
+            <Text size="2" color="red" role="alert">
+              {errorText("unauthorized")}
+              {waiting > 0 ? " The remaining screenshots are waiting." : ""}
+            </Text>
+          )}
+          <Text id="try-passcode-help" size="1" color="gray">
             Each read spends API credits, so the playground is passcode-gated. It is remembered
             until you close this tab.
           </Text>
@@ -304,8 +336,105 @@ export function TryPlayground() {
     </Card>
   );
 
+  const dropzone = (
+    <label
+      className={styles.dropzone}
+      data-compact={hasEntries}
+      data-drag-over={dragOver}
+      data-disabled={disabled || full}
+    >
+      <input
+        ref={fileInputRef}
+        className={styles.fileInput}
+        type="file"
+        multiple
+        accept={ACCEPTED_MEDIA_TYPES.join(",")}
+        disabled={disabled || full}
+        onChange={(event) => {
+          addFiles(Array.from(event.target.files ?? []));
+          // So the same file can be chosen again after it was removed.
+          event.target.value = "";
+        }}
+      />
+      <NavIcon
+        name="upload"
+        width={hasEntries ? 20 : 28}
+        height={hasEntries ? 20 : 28}
+        style={{ color: "var(--accent-11)", flexShrink: 0 }}
+      />
+      {hasEntries ? (
+        <Text size="2" weight="medium">
+          {full ? `Batch full (${MAX_BATCH_IMAGES} images)` : "Add more screenshots"}
+        </Text>
+      ) : (
+        <>
+          <Text size="3" weight="medium">
+            <Box as="span" display={{ initial: "none", sm: "inline" }}>
+              Drop bank-log screenshots, paste with Ctrl+V, or click to choose
+            </Box>
+            <Box as="span" display={{ initial: "inline", sm: "none" }}>
+              Tap to choose bank-log screenshots
+            </Box>
+          </Text>
+          <Text size="2" color="gray">
+            PNG, JPEG or WebP · up to 10 MB each · up to {MAX_BATCH_IMAGES} at once · 10–20 seconds per image
+          </Text>
+        </>
+      )}
+    </label>
+  );
+
+  const batchNotice = (notes.cap || notes.duplicates) && (
+    <Flex direction="column" gap="2">
+      {notes.cap && (
+        <Callout.Root color="amber" size="1" role="status">
+          <Callout.Text>{notes.cap}</Callout.Text>
+        </Callout.Root>
+      )}
+      {notes.duplicates && (
+        <Text size="1" color="gray" role="status">
+          {notes.duplicates}
+        </Text>
+      )}
+    </Flex>
+  );
+
+  const batchBar = hasEntries && (
+    <Flex align="center" justify="between" gap="3" wrap="wrap">
+      <Heading as="h2" size="3">
+        {entries.length} {entries.length === 1 ? "screenshot" : "screenshots"}
+      </Heading>
+      <Flex gap="2" wrap="wrap">
+        {hasRetryableFailures(queue) && (
+          <Button size="1" variant="soft" onClick={() => dispatch({ type: "retryFailed" })}>
+            Retry failed
+          </Button>
+        )}
+        <Button size="1" variant="soft" color="gray" onClick={clearAll}>
+          Clear all
+        </Button>
+      </Flex>
+    </Flex>
+  );
+
   return (
-    <Flex direction="column" gap="4">
+    <Flex
+      direction="column"
+      gap="4"
+      onDragOver={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes("Files")) return;
+        event.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragOver(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragOver(false);
+        addFiles(droppedFiles(event.dataTransfer));
+      }}
+    >
       {disabled && (
         <Callout.Root color="red">
           <Callout.Text>
@@ -314,105 +443,47 @@ export function TryPlayground() {
         </Callout.Root>
       )}
 
-      {!shot ? (
+      {passcodeForm}
+
+      {!hasEntries && (
         <>
-          {passcodeForm}
-          <label
-            className={styles.dropzone}
-            data-drag-over={dragOver}
-            data-disabled={disabled}
-            onDragOver={(event) => {
-              event.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(event) => {
-              event.preventDefault();
-              setDragOver(false);
-              const file = firstImage(event.dataTransfer);
-              if (file) choose(file);
-              else setPickError(errorText("bad_request"));
-            }}
-          >
-            <input
-              ref={fileInputRef}
-              className={styles.fileInput}
-              type="file"
-              accept={ACCEPTED_MEDIA_TYPES.join(",")}
-              disabled={disabled}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) choose(file);
-              }}
-            />
-            <NavIcon name="upload" width={28} height={28} style={{ color: "var(--accent-11)" }} />
-            <Text size="3" weight="medium">
-              <Box as="span" display={{ initial: "none", sm: "inline" }}>
-                Drop a bank-log screenshot, paste it with Ctrl+V, or click to choose
-              </Box>
-              <Box as="span" display={{ initial: "inline", sm: "none" }}>
-                Tap to choose a bank-log screenshot
-              </Box>
-            </Text>
-            <Text size="2" color="gray">
-              PNG, JPEG or WebP · up to 10 MB · reading takes 10–20 seconds
-            </Text>
-          </label>
-          {pickError && (
-            <Callout.Root color="red" size="1" role="alert">
-              <Callout.Text>{pickError}</Callout.Text>
-            </Callout.Root>
-          )}
+          {dropzone}
+          {batchNotice}
         </>
-      ) : (
-        <Grid columns={{ initial: "1", md: "minmax(0, 2fr) minmax(0, 3fr)" }} gap="5" align="start">
-          <Flex direction="column" gap="2" className={styles.shot}>
-            {/* A blob: preview of the user's own file; next/image has nothing to optimise. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className={styles.shotImage} src={shot.url} alt="The screenshot you chose" />
-            <Text size="1" color="gray" truncate>
-              {shot.file.name || "Pasted image"} · {formatBytes(shot.file.size)}
-            </Text>
+      )}
+
+      {hasEntries && <TrySummary entries={entries} />}
+
+      {hasEntries && isDesktop && (
+        <Grid columns="232px minmax(0, 1fr)" gap="4" align="start">
+          <Flex direction="column" gap="3" className={styles.rail}>
+            {dropzone}
+            {batchNotice}
+            {batchBar}
+            <EntryRail
+              entries={entries}
+              selectedId={selectedId}
+              onSelect={(id) => setPicked(id)}
+              onRemove={actions.onRemove}
+            />
           </Flex>
-
-          <Flex direction="column" gap="4" minWidth="0">
-            {passcodeForm}
-
-            {phase.name === "idle" && needsPasscode && (
-              <Text size="2" color="gray">
-                Enter the passcode, then press Read screenshot.
-              </Text>
-            )}
-
-            {phase.name === "reading" && <Reading startedAt={phase.startedAt} />}
-
-            {phase.name === "error" && (
-              <Callout.Root color="red" role="alert">
-                <Callout.Text weight="medium">{errorText(phase.kind)}</Callout.Text>
-                {phase.detail && phase.detail !== errorText(phase.kind) && (
-                  <Callout.Text size="1" style={{ overflowWrap: "anywhere" }}>
-                    {phase.detail}
-                  </Callout.Text>
-                )}
-              </Callout.Root>
-            )}
-
-            {phase.name === "done" && (
-              <TryResult result={phase.body.result} durationMs={phase.body.durationMs} />
-            )}
-
-            <Flex gap="3" wrap="wrap">
-              {phase.name === "error" && phase.kind !== "unauthorized" && phase.kind !== "disabled" && (
-                <Button variant="soft" onClick={() => void run(shot.file, passcode.trim())}>
-                  Retry
-                </Button>
-              )}
-              <Button variant={phase.name === "done" ? "solid" : "soft"} color={reading ? "gray" : undefined} onClick={tryAnother}>
-                {reading ? "Cancel" : "Try another"}
-              </Button>
-            </Flex>
-          </Flex>
+          {selected && <EntryDetail entry={selected} paused={paused} actions={actions} />}
         </Grid>
+      )}
+
+      {hasEntries && !isDesktop && (
+        <>
+          {dropzone}
+          {batchNotice}
+          {batchBar}
+          <EntryCards
+            entries={entries}
+            openId={selectedId}
+            paused={paused}
+            onToggle={(id) => setPicked(id === selectedId ? null : id)}
+            actions={actions}
+          />
+        </>
       )}
     </Flex>
   );

@@ -8,6 +8,7 @@ vi.mock("@/modules/extractor", async (importOriginal) => ({
 
 import { ExtractorError, extract, type ExtractionResult } from "@/modules/extractor";
 import { MAX_IMAGE_BYTES } from "@/modules/playground";
+import { MAX_BATCH_IMAGES, interpretResponse } from "@/modules/playground/queue";
 import { RATE_LIMIT, resetRateLimit } from "./handler";
 import { GET, POST } from "./route";
 
@@ -194,6 +195,16 @@ describe("POST /api/try-extract", () => {
     expect(extractMock).not.toHaveBeenCalled();
   });
 
+  it("allows 60 requests per 10 minutes per IP", () => {
+    expect(RATE_LIMIT).toEqual({ limit: 60, windowMs: 10 * 60 * 1000 });
+  });
+
+  it("lets two full 20-image batches plus retries through", async () => {
+    for (let index = 0; index < 2 * MAX_BATCH_IMAGES + 10; index += 1) {
+      expect((await post({ ip: "203.0.113.6" })).status).toBe(200);
+    }
+  });
+
   it("limits requests per IP with 429 and Retry-After", async () => {
     for (let index = 0; index < RATE_LIMIT.limit; index += 1) {
       expect((await post({ ip: "203.0.113.7" })).status).toBe(200);
@@ -201,7 +212,18 @@ describe("POST /api/try-extract", () => {
     const limited = await post({ ip: "203.0.113.7, 10.0.0.1" });
     expect(limited.status).toBe(429);
     expect((await errorOf(limited)).kind).toBe("too_many_requests");
-    expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+
+    // Retry-After: whole seconds until the window resets, never past the window itself.
+    const retryAfter = limited.headers.get("retry-after");
+    expect(retryAfter).toMatch(/^\d+$/);
+    expect(Number(retryAfter)).toBeGreaterThan(0);
+    expect(Number(retryAfter)).toBeLessThanOrEqual(RATE_LIMIT.windowMs / 1000);
+    expect((await errorOf(await post({ ip: "203.0.113.7" }))).message).toContain("seconds");
+    // The page reads the same header to word the wait.
+    expect(interpretResponse(429, null, retryAfter, Date.now())).toMatchObject({
+      type: "failure",
+      error: { kind: "too_many_requests", retryAfterSeconds: Number(retryAfter) },
+    });
 
     // Another client is unaffected.
     expect((await post({ ip: "203.0.113.8" })).status).toBe(200);

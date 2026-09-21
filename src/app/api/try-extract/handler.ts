@@ -25,7 +25,12 @@ import {
   type PlaygroundSuccessBody,
 } from "@/modules/playground";
 
-export const RATE_LIMIT = { limit: 10, windowMs: 10 * 60 * 1000 } as const;
+/**
+ * Per IP. The page sends one request per screenshot and a batch holds up to
+ * 20, so the limit leaves room for a few full batches plus retries. The
+ * passcode is the real gate; this only stops a client that loops.
+ */
+export const RATE_LIMIT = { limit: 60, windowMs: 10 * 60 * 1000 } as const;
 /** Room for multipart boundaries and headers around a 10 MB file. */
 const MAX_BODY_BYTES = MAX_IMAGE_BYTES + 1024 * 1024;
 
