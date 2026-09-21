@@ -1,157 +1,24 @@
 "use client";
 
-import { motion, useReducedMotion } from "motion/react";
-import { Badge, Box, Callout, Card, Flex, Grid, Heading, Table, Text, Tooltip } from "@radix-ui/themes";
+import { useReducedMotion } from "motion/react";
+import { Badge, Button, Callout, Card, Flex, Grid, Heading, Text } from "@radix-ui/themes";
 import { findItem } from "@/catalog";
 import { ItemChip, UnknownItemChip } from "@/components/ItemChip";
 import { formatQty } from "@/lib/format";
 import type { ExtractionResult, ParsedRow } from "@/modules/extractor";
+import { totalsByItem } from "@/modules/playground";
 import {
-  CONFIDENCE_COLOR,
-  confidenceLevel,
-  formatConfidence,
-  formatQuantity,
-  totalsByItem,
-} from "@/modules/playground";
+  correctedRows,
+  reviewCounts,
+  type ImageReview,
+  type ReviewAction,
+} from "@/modules/playground/review";
+import { ReviewRows, type RowSelection, type ScreenshotSource } from "./ReviewRows";
 import styles from "./TryPlayground.module.css";
-
-const MotionTableRow = motion.create(Table.Row);
-
-const ROW_DURATION = 0.25;
-const ROW_STAGGER = 0.04;
-
-/** Rows stagger in; the delay stops growing so a long log does not crawl. */
-function rowDelay(index: number): number {
-  return Math.min(index, 15) * ROW_STAGGER;
-}
 
 function RowItem({ row, qty }: { row: Pick<ParsedRow, "itemId">; qty?: string }) {
   const item = findItem(row.itemId);
   return item ? <ItemChip item={item} qty={qty} /> : <UnknownItemChip qty={qty} />;
-}
-
-function ConfidenceBadge({ row }: { row: ParsedRow }) {
-  const level = confidenceLevel(row.confidence);
-  const badge = (
-    <Badge
-      color={CONFIDENCE_COLOR[level]}
-      variant="soft"
-      size="1"
-      className={styles.numeric}
-      // Focusable so the reason is reachable by keyboard and by tap.
-      tabIndex={row.lowConfidenceReason ? 0 : undefined}
-    >
-      {formatConfidence(row.confidence)}
-    </Badge>
-  );
-  return row.lowConfidenceReason ? <Tooltip content={row.lowConfidenceReason}>{badge}</Tooltip> : badge;
-}
-
-/** Class, level and pulse delay for a row; anything below "high" is flagged. */
-function flagProps(row: ParsedRow, delay: number, animate: boolean, baseClass: string) {
-  const level = confidenceLevel(row.confidence);
-  if (level === "high") return { className: baseClass };
-  return {
-    className: `${baseClass} ${styles.flagged}`,
-    "data-level": level,
-    // The pulse starts once the row has faded in.
-    style: { animationDelay: animate ? `${delay + ROW_DURATION}s` : "0s" },
-  };
-}
-
-function RowsTable({ rows, animate }: { rows: ParsedRow[]; animate: boolean }) {
-  return (
-    <Table.Root size="1" variant="surface">
-      <Table.Header>
-        <Table.Row>
-          <Table.ColumnHeaderCell>Item</Table.ColumnHeaderCell>
-          <Table.ColumnHeaderCell justify="end">Qty</Table.ColumnHeaderCell>
-          <Table.ColumnHeaderCell>Game time</Table.ColumnHeaderCell>
-          <Table.ColumnHeaderCell>Character</Table.ColumnHeaderCell>
-          <Table.ColumnHeaderCell justify="end">Confidence</Table.ColumnHeaderCell>
-        </Table.Row>
-      </Table.Header>
-      <Table.Body>
-        {rows.map((row, index) => {
-          const delay = rowDelay(index);
-          return (
-            <MotionTableRow
-              key={index}
-              align="center"
-              initial={animate ? { opacity: 0, y: 6 } : false}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: ROW_DURATION, ease: "easeOut", delay }}
-              {...flagProps(row, delay, animate, styles.row)}
-            >
-              <Table.RowHeaderCell>
-                <RowItem row={row} />
-                {row.itemId === "unknown" && row.iconDescription && (
-                  <Text as="div" size="1" color="gray" mt="1">
-                    Looks like: {row.iconDescription}
-                  </Text>
-                )}
-              </Table.RowHeaderCell>
-              <Table.Cell justify="end" className={styles.numeric}>
-                {formatQuantity(row.quantity)}
-              </Table.Cell>
-              <Table.Cell className={styles.numeric}>{row.gameTimestamp || "—"}</Table.Cell>
-              <Table.Cell>{row.character || "—"}</Table.Cell>
-              <Table.Cell justify="end">
-                <ConfidenceBadge row={row} />
-              </Table.Cell>
-            </MotionTableRow>
-          );
-        })}
-      </Table.Body>
-    </Table.Root>
-  );
-}
-
-/** Phones: a list instead of a table (icon · qty · character · timestamp · confidence). */
-function RowsList({ rows, animate }: { rows: ParsedRow[]; animate: boolean }) {
-  return (
-    <Card size="1">
-      <Flex direction="column" asChild>
-        <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
-          {rows.map((row, index) => {
-            const delay = rowDelay(index);
-            return (
-              <motion.li
-                key={index}
-                initial={animate ? { opacity: 0, y: 6 } : false}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: ROW_DURATION, ease: "easeOut", delay }}
-                {...flagProps(row, delay, animate, styles.listRow)}
-              >
-                <Flex align="center" justify="between" gap="3">
-                  <RowItem row={row} />
-                  <Text size="2" weight="medium" className={styles.numeric}>
-                    {formatQuantity(row.quantity)}
-                  </Text>
-                </Flex>
-                <Flex align="center" justify="between" gap="3" mt="1">
-                  <Text size="1" color="gray" truncate>
-                    {row.character || "No name"} · {row.gameTimestamp || "no time"}
-                  </Text>
-                  <ConfidenceBadge row={row} />
-                </Flex>
-                {row.itemId === "unknown" && row.iconDescription && (
-                  <Text as="div" size="1" color="gray" mt="1">
-                    Looks like: {row.iconDescription}
-                  </Text>
-                )}
-                {row.lowConfidenceReason && (
-                  <Text as="div" size="1" color={CONFIDENCE_COLOR[confidenceLevel(row.confidence)]} mt="1">
-                    {row.lowConfidenceReason}
-                  </Text>
-                )}
-              </motion.li>
-            );
-          })}
-        </ul>
-      </Flex>
-    </Card>
-  );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -202,7 +69,56 @@ function RunFooter({ result, durationMs }: { result: ExtractionResult; durationM
   );
 }
 
-export function TryResult({ result, durationMs }: { result: ExtractionResult; durationMs: number }) {
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
+  );
+}
+
+/** "3 to check" in amber, or a green "All checked" once nothing waits. Nothing for an image without rows. */
+export function ToCheckBadge({ rows, toCheck, size = "1" }: { rows: number; toCheck: number; size?: "1" | "2" }) {
+  if (rows === 0) return null;
+  return toCheck > 0 ? (
+    <Badge color="amber" variant="soft" size={size} className={styles.numeric}>
+      {toCheck} to check
+    </Badge>
+  ) : (
+    <Badge color="green" variant="soft" size={size}>
+      <CheckIcon />
+      All checked
+    </Badge>
+  );
+}
+
+export interface TryResultProps {
+  imageId: string;
+  result: ExtractionResult;
+  durationMs: number;
+  /** The human review of this image's rows; totals and counts read the corrected values. */
+  review: ImageReview | undefined;
+  dispatch: (action: ReviewAction) => void;
+  screenshot: ScreenshotSource | null;
+  activeRowId: string | null;
+  onActiveRow: (rowId: string | null) => void;
+  selection: RowSelection | null;
+  /** Character names read anywhere in the batch. */
+  characters: readonly string[];
+}
+
+export function TryResult({
+  imageId,
+  result,
+  durationMs,
+  review,
+  dispatch,
+  screenshot,
+  activeRowId,
+  onActiveRow,
+  selection,
+  characters,
+}: TryResultProps) {
   const animate = !useReducedMotion();
 
   if (!result.looksLikeBankLog) {
@@ -224,32 +140,61 @@ export function TryResult({ result, durationMs }: { result: ExtractionResult; du
     );
   }
 
-  const { rows } = result;
-  const needLook = rows.filter((row) => confidenceLevel(row.confidence) !== "high").length;
+  const counts = reviewCounts(review);
+  const rows = correctedRows(review);
   const totals = totalsByItem(rows);
+  const names = [...new Set(rows.map((row) => row.character.trim()).filter((name) => name !== ""))];
+  const changed = counts.edited + counts.added + counts.deleted > 0;
 
   return (
     <Flex direction="column" gap="5">
       <Section title="Deposit rows">
-        <Text size="2" color="gray">
-          {rows.length} {rows.length === 1 ? "row" : "rows"}
-          {needLook > 0 ? ` · ${needLook} to double-check` : ""}
-        </Text>
-        {rows.length === 0 ? (
-          <Card size="2">
+        <Flex align="center" justify="between" gap="3" wrap="wrap">
+          <Flex align="center" gap="2" wrap="wrap">
             <Text size="2" color="gray">
-              No deposit rows were found in this screenshot.
+              {counts.rows} {counts.rows === 1 ? "row" : "rows"}
+              {counts.edited > 0 ? ` · ${counts.edited} edited` : ""}
+              {counts.added > 0 ? ` · ${counts.added} added` : ""}
             </Text>
-          </Card>
-        ) : (
-          <>
-            <Box display={{ initial: "none", sm: "block" }}>
-              <RowsTable rows={rows} animate={animate} />
-            </Box>
-            <Box display={{ initial: "block", sm: "none" }}>
-              <RowsList rows={rows} animate={animate} />
-            </Box>
-          </>
+            <span aria-live="polite">
+              <ToCheckBadge rows={counts.rows} toCheck={counts.toCheck} />
+            </span>
+          </Flex>
+          <Flex align="center" gap="2">
+            {changed && (
+              <Button
+                size="1"
+                variant="ghost"
+                color="gray"
+                title="Back to what was read: forgets every edit, added and removed row"
+                onClick={() => dispatch({ type: "reset", imageId })}
+              >
+                Reset
+              </Button>
+            )}
+            <Button
+              size="1"
+              variant="soft"
+              disabled={counts.acceptable === 0}
+              title="Checks every row that does not need a closer look. Fragments, silver, unknown and unsure rows stay yours to tap."
+              onClick={() => dispatch({ type: "checkAllSafe", imageId })}
+            >
+              Accept all
+            </Button>
+          </Flex>
+        </Flex>
+        {review && (
+          <ReviewRows
+            imageId={imageId}
+            review={review}
+            dispatch={dispatch}
+            screenshot={screenshot}
+            activeRowId={activeRowId}
+            onActiveRow={onActiveRow}
+            selection={selection}
+            characters={characters}
+            animate={animate}
+          />
         )}
       </Section>
 
@@ -279,13 +224,13 @@ export function TryResult({ result, durationMs }: { result: ExtractionResult; du
       </Section>
 
       <Section title="Characters">
-        {result.characters.length === 0 ? (
+        {names.length === 0 ? (
           <Text size="2" color="gray">
             None read.
           </Text>
         ) : (
           <Flex gap="2" wrap="wrap">
-            {result.characters.map((name) => (
+            {names.map((name) => (
               <Badge key={name} color="gray" variant="surface" size="2">
                 {name}
               </Badge>
