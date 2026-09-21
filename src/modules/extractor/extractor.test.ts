@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import sharp from "sharp";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { catalog } from "@/catalog";
 import { ExtractorError, extract, type ExtractorClient } from "./index";
@@ -299,6 +300,17 @@ describe("extract: failures surface as ExtractorError", () => {
     expect((await failure(extract(input, { client }))).kind).toBe("config");
     expect(client.requests).toHaveLength(0);
   });
+
+  it("upscale settings that make no sense", async () => {
+    const client = fakeClient(fakeMessage(modelOutput([])));
+
+    vi.stubEnv("EXTRACTOR_UPSCALE", "maybe");
+    expect((await failure(extract(input, { client }))).message).toMatch(/EXTRACTOR_UPSCALE/);
+    vi.stubEnv("EXTRACTOR_UPSCALE", "");
+    vi.stubEnv("EXTRACTOR_UPSCALE_MAX_EDGE", "huge");
+    expect((await failure(extract(input, { client }))).message).toMatch(/EXTRACTOR_UPSCALE_MAX_EDGE/);
+    expect(client.requests).toHaveLength(0);
+  });
 });
 
 describe("extract: request shape", () => {
@@ -389,6 +401,63 @@ describe("extract: request shape", () => {
     vi.stubEnv("EXTRACTOR_FALLBACKS", "off");
     const switchedOff = await requestFor();
     expect(switchedOff.request).not.toHaveProperty("fallbacks");
+  });
+
+  it("sends an enlarged PNG of a small screenshot, or the upload itself when switched off", async () => {
+    const upload = await sharp({
+      create: { width: 320, height: 200, channels: 3, background: { r: 22, g: 25, b: 30 } },
+    })
+      .jpeg()
+      .toBuffer();
+    const sentImage = async (deps: Parameters<typeof extract>[1]) => {
+      const client = fakeClient(fakeMessage(modelOutput([])));
+      const result = await extract({ image: upload, mediaType: "image/jpeg" }, { client, ...deps });
+      const content = client.requests[0].messages[0].content;
+      if (typeof content === "string") throw new Error("expected content blocks");
+      const image = content.findLast((block) => block.type === "image");
+      if (image?.type !== "image" || image.source.type !== "base64") throw new Error("no screenshot");
+      return { source: image.source, result };
+    };
+
+    const on = await sentImage({});
+    expect(on.source.media_type).toBe("image/png");
+    const sent = await sharp(Buffer.from(on.source.data, "base64")).metadata();
+    expect([sent.width, sent.height]).toEqual([640, 400]);
+    expect(on.result.upscale).toEqual({ applied: true, scale: 2, width: 320, height: 200 });
+
+    const off = await sentImage({ upscale: false });
+    expect(off.source).toEqual({
+      type: "base64",
+      media_type: "image/jpeg",
+      data: upload.toString("base64"),
+    });
+    expect(off.result.upscale?.applied).toBe(false);
+
+    vi.stubEnv("EXTRACTOR_UPSCALE", "off");
+    expect((await sentImage({})).source.media_type).toBe("image/jpeg");
+  });
+
+  it("asks for box and quantityText, with the description before the id and the text before the digits", async () => {
+    const { request } = await requestFor();
+    const schema = request.output_config?.format?.schema as {
+      properties: { rows: { items: { properties: Record<string, unknown>; required: string[] } } };
+    };
+    const fields = Object.keys(schema.properties.rows.items.properties);
+
+    expect(schema.properties.rows.items.required).toEqual(expect.arrayContaining(["box", "quantityText"]));
+    expect(fields.indexOf("iconDescription")).toBeLessThan(fields.indexOf("itemId"));
+    expect(fields.indexOf("quantityText")).toBeLessThan(fields.indexOf("quantity"));
+  });
+
+  it("labels each fragment with what sets its jewelry apart", async () => {
+    const { content } = await requestFor();
+    const labels = content.flatMap((block) => (block.type === "text" ? [block.text] : []));
+
+    for (const item of catalog.filter((entry) => entry.kind === "fragment")) {
+      const label = labels.find((text) => text.includes(`id: ${item.id},`));
+      expect(label).toMatch(/ignore the paper badge/);
+    }
+    expect(labels.find((text) => text.includes("id: gold-ingot,"))).not.toMatch(/badge/);
   });
 
   it("warns when a fallback model served the answer", async () => {
