@@ -1,17 +1,16 @@
 "use client";
 
-import { Badge, Card, Flex, Grid, Heading, Progress, Text } from "@radix-ui/themes";
+import { useEffect, useState } from "react";
+import { Badge, Button, Card, Flex, Grid, Heading, Progress, Text } from "@radix-ui/themes";
 import { catalog, findItem } from "@/catalog";
 import { ItemChip, UnknownItemChip } from "@/components/ItemChip";
 import { CountUp } from "@/components/progress/CountUp";
 import { formatQty } from "@/lib/format";
+import { reviewedImages } from "@/modules/playground/batch";
+import { buildTsv } from "@/modules/playground/export";
 import type { QueueEntry } from "@/modules/playground/queue";
-import {
-  characterBreakdown,
-  combinedTotals,
-  finishedResults,
-  summarize,
-} from "@/modules/playground/summary";
+import { batchReviewCounts, type ReviewState } from "@/modules/playground/review";
+import { characterBreakdown, combinedTotals, summarize } from "@/modules/playground/summary";
 import styles from "./TryPlayground.module.css";
 
 const CATALOG_ORDER = catalog.map((item) => item.id);
@@ -35,7 +34,7 @@ function Stat({
   label: string;
   children: React.ReactNode;
   hint?: React.ReactNode;
-  color?: "amber" | "red";
+  color?: "amber" | "red" | "green";
   /** Spans both columns of the phone grid. */
   wide?: boolean;
 }) {
@@ -58,12 +57,76 @@ function plural(count: number, one: string, many: string): string {
   return count === 1 ? one : many;
 }
 
-/** Live summary of the whole batch: counts, combined totals, per-character rows. */
-export function TrySummary({ entries }: { entries: readonly QueueEntry[] }) {
+/** Clipboard API where there is one (https, localhost); the old textarea trick elsewhere (a phone on the LAN). */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Permission refused: try the fallback.
+  }
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.append(area);
+  area.select();
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch {
+    copied = false;
+  }
+  area.remove();
+  return copied;
+}
+
+/** "Copy rows": the corrected rows of the whole batch as TSV, with an inline "Copied" for two seconds. */
+function CopyRows({ tsv, rows }: { tsv: () => string; rows: number }) {
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+
+  useEffect(() => {
+    if (state === "idle") return;
+    const id = window.setTimeout(() => setState("idle"), 2000);
+    return () => window.clearTimeout(id);
+  }, [state]);
+
+  const text =
+    state === "copied"
+      ? "Copied"
+      : state === "failed"
+        ? "Copy failed"
+        : `Copy ${formatQty(rows)} ${plural(rows, "row", "rows")}`;
+
+  return (
+    <Button
+      size="1"
+      variant="soft"
+      color={state === "copied" ? "green" : state === "failed" ? "red" : undefined}
+      disabled={rows === 0}
+      title="Tab-separated, ready to paste into a spreadsheet: game time, character, item, quantity, image"
+      onClick={async () => setState((await copyText(tsv())) ? "copied" : "failed")}
+    >
+      <span aria-live="polite">{text}</span>
+    </Button>
+  );
+}
+
+/**
+ * Live summary of the whole batch: counts, combined totals, per-character rows.
+ * Everything row-shaped reads the corrected rows (edits in, deleted rows out).
+ */
+export function TrySummary({ entries, review }: { entries: readonly QueueEntry[]; review: ReviewState }) {
   const summary = summarize(entries);
-  const results = finishedResults(entries);
-  const totals = combinedTotals(results, CATALOG_ORDER);
-  const characters = characterBreakdown(results);
+  const images = reviewedImages(entries, review);
+  const totals = combinedTotals(images, CATALOG_ORDER);
+  const characters = characterBreakdown(images);
+  const counts = batchReviewCounts(
+    images.map((image) => (image.looksLikeBankLog ? review[image.imageId] : undefined)),
+  );
 
   const pending = [
     summary.reading > 0 ? `${summary.reading} reading` : null,
@@ -99,11 +162,19 @@ export function TrySummary({ entries }: { entries: readonly QueueEntry[] }) {
             </Text>
           </Stat>
           <Stat label="Deposit rows">
-            <CountUp value={summary.rows} />
+            <CountUp value={counts.rows} />
           </Stat>
-          <Stat label="To double-check" color={summary.lowConfidenceRows > 0 ? "amber" : undefined}>
-            <CountUp value={summary.lowConfidenceRows} />
-          </Stat>
+          {counts.rows > 0 && counts.toCheck === 0 ? (
+            <Stat label="To check" color="green">
+              <span aria-live="polite">All checked</span>
+            </Stat>
+          ) : (
+            <Stat label="To check" color={counts.toCheck > 0 ? "amber" : undefined}>
+              <span aria-live="polite">
+                <CountUp value={counts.toCheck} />
+              </span>
+            </Stat>
+          )}
           <Stat label="Warnings" color={summary.warnings > 0 ? "amber" : undefined}>
             <CountUp value={summary.warnings} />
           </Stat>
@@ -119,9 +190,12 @@ export function TrySummary({ entries }: { entries: readonly QueueEntry[] }) {
         <Card size="1">
           <Flex direction="column" gap="3">
             <Flex direction="column" gap="2">
-              <Heading as="h2" size="2">
-                Combined totals
-              </Heading>
+              <Flex align="center" justify="between" gap="3" wrap="wrap">
+                <Heading as="h2" size="2">
+                  Combined totals
+                </Heading>
+                <CopyRows rows={counts.rows} tsv={() => buildTsv(images)} />
+              </Flex>
               {totals.length === 0 ? (
                 <Text size="2" color="gray">
                   Totals appear here as screenshots finish.

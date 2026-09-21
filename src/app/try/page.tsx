@@ -20,8 +20,8 @@ export default function TryPage() {
           </Badge>
         </Flex>
         <Text as="p" color="gray" style={{ margin: 0 }}>
-          Upload guild bank-log screenshots, several at once, and see the deposit rows Claude reads from
-          each.
+          Upload guild bank-log screenshots, several at once, see the deposit rows Claude reads from each,
+          and check or correct them.
         </Text>
         <Text as="p" size="2" weight="medium" style={{ margin: 0 }}>
           Playground — nothing is saved to the ledger.

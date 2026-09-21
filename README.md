@@ -226,9 +226,29 @@ stays under the host's upload cap and every call under `maxDuration`. A bad
 file becomes a failed line in the list and never blocks the rest; failed reads
 can be retried one by one or all together, and "Clear all" aborts whatever is
 in flight. A summary strip on top adds up the finished images: rows, rows to
-double-check, warnings, read time, combined per-item totals and rows per
+check, warnings, read time, combined per-item totals and rows per
 character. The queue is a pure reducer in `src/modules/playground/queue.ts`;
-the batch numbers live in `summary.ts` beside it. Until the real upload flow lands, the Upload
+the batch numbers live in `summary.ts` beside it.
+
+**The rows are a verify step** (the seed of decision 6's verify screen). Every
+row has a round check: rows the extractor is weak on start unchecked in amber
+and must be tapped one by one — confidence under 85%, an unknown item, any of
+the four blueprint fragments, Silver Coin, or a displayed amount
+(`quantityText`) that is mis-grouped or disagrees with the quantity; the rest
+start auto-accepted, and "Accept all" only ever confirms those. Click the item
+for a picker with large icon tiles (fragments first) and, when the extractor
+sent the row's position (`box`), an enlarged strip of that row cut from the
+screenshot to compare against; click the quantity to type a correction
+(`500,000,000`, `500m`, `1.5b`) with a "1.5 billion" sanity line. Rows can be
+removed (Undo / "Removed (n)") and added. Hovering a row bands it on the
+screenshot; clicking the screenshot finds the row. Totals, counts and the
+summary always read the corrected rows. Nothing is saved, so **Copy rows**
+puts the batch on the clipboard as TSV and **Download fixture** writes one
+image's corrected rows as a `fixtures/extractor/*/expected.json`. The model
+is `review.ts` (reducer + needs-a-look rule), `quantity.ts` (parser, compact
+reading), `export.ts`, `geometry.ts` and `batch.ts` (queue + review behind one
+reducer); `box` and `quantityText` are optional and read through tolerant
+accessors. Until the real upload flow lands, the Upload
 button and the mobile Upload tab point here (`UPLOAD_HREF` in
 `src/components/shell/nav.ts`; set it back to `"/upload"` to revert).
 
@@ -266,7 +286,7 @@ On Vercel the reference icons reach the function through
 - `src/db/` Drizzle schema, driver switch, queries, seed
 - `src/modules/progress/` pure `computeProgress()` with tests
 - `src/modules/extractor/` `extract()`: screenshot to deposit rows via the Claude API, plus the eval
-- `src/modules/playground/` pure helpers for `/try` (BigInt quantity formatting, totals, confidence levels)
+- `src/modules/playground/` pure logic for `/try` (upload queue, human-review reducer, quantity parser, TSV / fixture export, totals)
 - `fixtures/extractor/` eval fixtures (screenshot + expected rows)
 - `src/components/` Radix Themes UI (`ItemChip`, shell, progress bars)
 - `src/app/` Next.js App Router pages (`/` is Progress, `/try` the playground, `api/try-extract` its route; other routes are placeholders)

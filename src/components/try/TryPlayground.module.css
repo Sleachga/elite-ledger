@@ -54,8 +54,15 @@
 
 /* Screenshot: on top on phones; sticky left column from 1024px. */
 .shot,
+.shotTop,
 .shotStacked {
   min-width: 0;
+}
+
+/* 1024–1279px: above the rows, never taller than half the window; scrolls inside itself. */
+.shotTop {
+  max-height: 50dvh;
+  overflow: auto;
 }
 
 .shotImage {
@@ -174,18 +181,6 @@
   background: var(--gray-a3);
   color: var(--gray-11);
   object-fit: cover;
-}
-
-.flagDot {
-  flex-shrink: 0;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--amber-9);
-}
-
-.flagDot[data-level="low"] {
-  background: var(--red-9);
 }
 
 .chevron {

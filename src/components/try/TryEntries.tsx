@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Badge, Button, Callout, Card, Flex, Grid, IconButton, Progress, Spinner, Text } from "@radix-ui/themes";
+import { buildFixture, fixtureFileName, fixtureJson } from "@/modules/playground/export";
+import { rowAtFraction } from "@/modules/playground/geometry";
 import {
   canRetryEntry,
   exceedsHostLimit,
@@ -9,14 +11,44 @@ import {
   type EntryState,
   type QueueEntry,
 } from "@/modules/playground/queue";
-import { lowConfidenceCount, worstFlag } from "@/modules/playground/summary";
-import { TryResult } from "./TryResult";
+import {
+  activeRows,
+  correctedRows,
+  reviewCounts,
+  type ImageReview,
+  type ReviewAction,
+  type ReviewState,
+} from "@/modules/playground/review";
+import { BESIDE_QUERY, useImageSize, useMediaQuery } from "./hooks";
+import type { RowSelection } from "./ReviewRows";
+import { ToCheckBadge, TryResult } from "./TryResult";
+import reviewStyles from "./Review.module.css";
 import styles from "./TryPlayground.module.css";
 
 export interface EntryActions {
   onRetry: (id: string) => void;
   onCancel: (id: string) => void;
   onRemove: (id: string) => void;
+}
+
+/** What every entry view needs to show and change the human review. */
+export interface ReviewContext {
+  review: ReviewState;
+  dispatch: (action: ReviewAction) => void;
+  /** Character names read anywhere in the batch. */
+  characters: readonly string[];
+}
+
+/** Hand the browser a file made on the spot. Nothing leaves the page. */
+function downloadText(fileName: string, text: string, type: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function formatBytes(bytes: number): string {
@@ -60,9 +92,8 @@ function StateBadge({ entry }: { entry: QueueEntry }) {
   );
 }
 
-function rowsOf(entry: QueueEntry) {
-  if (entry.state !== "done" || !entry.body || !entry.body.result.looksLikeBankLog) return null;
-  return entry.body.result.rows;
+function isBankLog(entry: QueueEntry): boolean {
+  return entry.state === "done" && !!entry.body && entry.body.result.looksLikeBankLog;
 }
 
 function Thumb({ entry }: { entry: QueueEntry }) {
@@ -94,9 +125,10 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-/** One line per image: thumbnail, name, state, row count, low-confidence dot, remove. */
+/** One line per image: thumbnail, name, state, row count, what is left to check, remove. */
 function EntryHeader({
   entry,
+  review,
   selected,
   mode,
   controls,
@@ -104,6 +136,7 @@ function EntryHeader({
   onRemove,
 }: {
   entry: QueueEntry;
+  review: ImageReview | undefined;
   selected: boolean;
   /** "rail": picks the entry shown on the right. "card": opens and closes the card. */
   mode: "rail" | "card";
@@ -111,9 +144,7 @@ function EntryHeader({
   onSelect: () => void;
   onRemove: () => void;
 }) {
-  const rows = rowsOf(entry);
-  const flag = rows ? worstFlag(rows) : null;
-  const flagged = rows ? lowConfidenceCount(rows) : 0;
+  const counts = isBankLog(entry) ? reviewCounts(review) : null;
 
   return (
     <div className={styles.entryHeader} data-selected={selected} data-mode={mode}>
@@ -142,20 +173,12 @@ function EntryHeader({
                 Over 4.5 MB
               </Badge>
             )}
-            {rows && (
+            {counts && (
               <Text as="span" size="1" color="gray" className={styles.numeric}>
-                {rows.length} {rows.length === 1 ? "row" : "rows"}
+                {counts.rows} {counts.rows === 1 ? "row" : "rows"}
               </Text>
             )}
-            {flag && (
-              <span
-                className={styles.flagDot}
-                data-level={flag}
-                role="img"
-                aria-label={`${flagged} to double-check`}
-                title={`${flagged} ${flagged === 1 ? "row" : "rows"} to double-check`}
-              />
-            )}
+            {counts && <ToCheckBadge rows={counts.rows} toCheck={counts.toCheck} />}
           </span>
         </span>
         {mode === "card" && (
@@ -212,10 +235,51 @@ function Reading({ startedAt }: { startedAt: number }) {
   );
 }
 
-function EntryBody({ entry, paused, actions }: { entry: QueueEntry; paused: boolean; actions: EntryActions }) {
+
+/** The row ↔ screenshot link of one entry: which row is lit, and which one was picked on the image. */
+interface RowLink {
+  activeRowId: string | null;
+  /** Where the lit row was pointed at: on the rows, or on the screenshot itself. */
+  activeFrom: "rows" | "shot";
+  setActiveRow: (rowId: string | null, from: "rows" | "shot") => void;
+  selection: RowSelection | null;
+  selectRow: (rowId: string) => void;
+}
+
+function useRowLink(): RowLink {
+  const [active, setActive] = useState<{ rowId: string | null; from: "rows" | "shot" }>({
+    rowId: null,
+    from: "rows",
+  });
+  const [selection, setSelection] = useState<RowSelection | null>(null);
+  return {
+    activeRowId: active.rowId,
+    activeFrom: active.from,
+    setActiveRow: (rowId, from) =>
+      setActive((current) => (current.rowId === rowId && current.from === from ? current : { rowId, from })),
+    selection,
+    selectRow: (rowId) => setSelection((current) => ({ rowId, nonce: (current?.nonce ?? 0) + 1 })),
+  };
+}
+
+function EntryBody({
+  entry,
+  paused,
+  actions,
+  context,
+  link,
+}: {
+  entry: QueueEntry;
+  paused: boolean;
+  actions: EntryActions;
+  context: ReviewContext;
+  link: RowLink;
+}) {
   const { error } = entry;
   const headline = error ? failureText(error) : "";
   const pending = entry.state === "queued" || entry.state === "reading";
+  const review = context.review[entry.id];
+  const natural = useImageSize(entry.previewUrl);
 
   return (
     <Flex direction="column" gap="4" minWidth="0">
@@ -254,10 +318,40 @@ function EntryBody({ entry, paused, actions }: { entry: QueueEntry; paused: bool
       )}
 
       {entry.state === "done" && entry.body && (
-        <TryResult result={entry.body.result} durationMs={entry.body.durationMs} />
+        <TryResult
+          // A re-read starts the review over: the rows stagger in again.
+          key={review?.token}
+          imageId={entry.id}
+          result={entry.body.result}
+          durationMs={entry.body.durationMs}
+          review={review}
+          dispatch={context.dispatch}
+          screenshot={entry.previewUrl && natural ? { src: entry.previewUrl, natural } : null}
+          activeRowId={link.activeRowId}
+          onActiveRow={(rowId) => link.setActiveRow(rowId, "rows")}
+          selection={link.selection}
+          characters={context.characters}
+        />
       )}
 
       <Flex gap="3" wrap="wrap">
+        {entry.state === "done" && entry.body && (
+          <Button
+            size="2"
+            variant="soft"
+            title="The corrected rows as an extractor fixture (expected.json). Nothing is uploaded."
+            onClick={() => {
+              const looksLikeBankLog = entry.body?.result.looksLikeBankLog ?? false;
+              downloadText(
+                fixtureFileName(entry.file.name),
+                fixtureJson(buildFixture(looksLikeBankLog, correctedRows(review))),
+                "application/json",
+              );
+            }}
+          >
+            Download fixture
+          </Button>
+        )}
         {canRetryEntry(entry) && (
           <Button size="2" variant="soft" onClick={() => actions.onRetry(entry.id)}>
             Retry
@@ -276,22 +370,99 @@ function EntryBody({ entry, paused, actions }: { entry: QueueEntry; paused: bool
   );
 }
 
-function Screenshot({ entry, sticky }: { entry: QueueEntry; sticky: boolean }) {
+/**
+ * The screenshot. When the rows carry their position (`box`), the lit row gets
+ * a translucent band and a click picks the row under it; otherwise a click
+ * opens the image full size, as before.
+ */
+function Screenshot({
+  entry,
+  layout,
+  review,
+  link,
+}: {
+  entry: QueueEntry;
+  /** "side": sticky column beside the rows. "top": above them, height-capped. "card": in a phone card, full size. */
+  layout: "side" | "top" | "card";
+  review: ImageReview | undefined;
+  link: RowLink;
+}) {
+  const scroller = useRef<HTMLDivElement | null>(null);
+  const bandRef = useRef<HTMLDivElement | null>(null);
+  const rows = isBankLog(entry) ? activeRows(review) : [];
+  const linked = rows.some((row) => row.box !== null);
+  const band = rows.find((row) => row.id === link.activeRowId)?.box ?? null;
+  const follow = layout !== "card" && link.activeFrom === "rows";
+  const className = layout === "side" ? styles.shot : layout === "top" ? styles.shotTop : styles.shotStacked;
+
+  // "side" and "top" scroll inside their own box, so bring the lit row into it. In a card the page would jump.
+  useEffect(() => {
+    const container = scroller.current;
+    const element = bandRef.current;
+    if (!follow || !band || !container || !element) return;
+    if (container.scrollHeight <= container.clientHeight) return;
+    const outer = container.getBoundingClientRect();
+    const inner = element.getBoundingClientRect();
+    if (inner.top < outer.top) container.scrollTop -= outer.top - inner.top + 8;
+    else if (inner.bottom > outer.bottom) container.scrollTop += inner.bottom - outer.bottom + 8;
+  }, [follow, band]);
+
+  function rowUnder(event: MouseEvent<HTMLElement>): string | null {
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.height === 0) return null;
+    return rowAtFraction(rows, (event.clientY - rect.top) / rect.height);
+  }
+
+  const image = entry.previewUrl && (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img className={styles.shotImage} src={entry.previewUrl} alt={`Screenshot ${displayName(entry)}`} />
+  );
+
   return (
-    <Flex direction="column" gap="2" className={sticky ? styles.shot : styles.shotStacked}>
-      {entry.previewUrl ? (
-        <a href={entry.previewUrl} target="_blank" rel="noreferrer" title="Open full size in a new tab">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className={styles.shotImage} src={entry.previewUrl} alt={`Screenshot ${displayName(entry)}`} />
-        </a>
-      ) : (
+    <Flex direction="column" gap="2" className={className} ref={scroller}>
+      {!entry.previewUrl ? (
         <Text size="2" color="gray">
           No preview for this file.
         </Text>
+      ) : linked ? (
+        // A pointer shortcut only: by keyboard the rows themselves are the way in.
+        <div
+          className={reviewStyles.shotFrame}
+          data-linked="true"
+          title="Click a row to find it in the list"
+          onClick={(event) => {
+            const rowId = rowUnder(event);
+            if (rowId) link.selectRow(rowId);
+          }}
+          onMouseMove={(event) => link.setActiveRow(rowUnder(event), "shot")}
+          onMouseLeave={() => link.setActiveRow(null, "shot")}
+        >
+          {image}
+          {band && (
+            <div
+              ref={bandRef}
+              className={reviewStyles.band}
+              style={{ top: `${band.top * 100}%`, height: `${(band.bottom - band.top) * 100}%` }}
+            />
+          )}
+        </div>
+      ) : (
+        <a href={entry.previewUrl} target="_blank" rel="noreferrer" title="Open full size in a new tab">
+          {image}
+        </a>
       )}
-      <Text size="1" color="gray" truncate>
-        {displayName(entry)} · {formatBytes(entry.file.size)}
-      </Text>
+      <Flex align="center" justify="between" gap="3" minWidth="0">
+        <Text size="1" color="gray" truncate>
+          {displayName(entry)} · {formatBytes(entry.file.size)}
+        </Text>
+        {linked && entry.previewUrl && (
+          <Text size="1" style={{ flexShrink: 0 }} asChild>
+            <a href={entry.previewUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent-11)" }}>
+              Open full size
+            </a>
+          </Text>
+        )}
+      </Flex>
     </Flex>
   );
 }
@@ -299,11 +470,13 @@ function Screenshot({ entry, sticky }: { entry: QueueEntry; sticky: boolean }) {
 /** Desktop: the image list on the left. */
 export function EntryRail({
   entries,
+  review,
   selectedId,
   onSelect,
   onRemove,
 }: {
   entries: readonly QueueEntry[];
+  review: ReviewState;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onRemove: (id: string) => void;
@@ -314,6 +487,7 @@ export function EntryRail({
         <li key={entry.id}>
           <EntryHeader
             entry={entry}
+            review={review[entry.id]}
             mode="rail"
             selected={entry.id === selectedId}
             onSelect={() => onSelect(entry.id)}
@@ -325,23 +499,49 @@ export function EntryRail({
   );
 }
 
-/** Desktop: the selected image, screenshot beside its parsed rows. */
+/** Desktop: the selected image, screenshot beside its editable rows. */
 export function EntryDetail({
   entry,
   paused,
   actions,
+  context,
 }: {
   entry: QueueEntry;
   paused: boolean;
   actions: EntryActions;
+  context: ReviewContext;
 }) {
+  const link = useRowLink();
+  // The rows table needs about 620px. From 1280px the screenshot stands beside it; between 1024px and
+  // that there is no room for both, so it goes on top, capped in height.
+  const beside = useMediaQuery(BESIDE_QUERY);
   return (
-    // The rows table needs about 540px; the screenshot takes the rest and opens full size on click.
-    <Grid columns="minmax(0, 1fr) minmax(0, 1.9fr)" gap="4" align="start">
-      <Screenshot entry={entry} sticky />
-      {/* Keyed so the rows stagger in again for a different image. */}
-      <EntryBody key={entry.id} entry={entry} paused={paused} actions={actions} />
+    <Grid columns={beside ? "minmax(0, 1fr) minmax(0, 2.4fr)" : "minmax(0, 1fr)"} gap="4" align="start">
+      <Screenshot entry={entry} layout={beside ? "side" : "top"} review={context.review[entry.id]} link={link} />
+      <EntryBody entry={entry} paused={paused} actions={actions} context={context} link={link} />
     </Grid>
+  );
+}
+
+function EntryCardPanel({
+  entry,
+  panelId,
+  paused,
+  actions,
+  context,
+}: {
+  entry: QueueEntry;
+  panelId: string;
+  paused: boolean;
+  actions: EntryActions;
+  context: ReviewContext;
+}) {
+  const link = useRowLink();
+  return (
+    <Flex id={panelId} direction="column" gap="4" pt="3" minWidth="0">
+      <Screenshot entry={entry} layout="card" review={context.review[entry.id]} link={link} />
+      <EntryBody entry={entry} paused={paused} actions={actions} context={context} link={link} />
+    </Flex>
   );
 }
 
@@ -352,12 +552,14 @@ export function EntryCards({
   paused,
   onToggle,
   actions,
+  context,
 }: {
   entries: readonly QueueEntry[];
   openId: string | null;
   paused: boolean;
   onToggle: (id: string) => void;
   actions: EntryActions;
+  context: ReviewContext;
 }) {
   return (
     <ul className={styles.entryList} aria-label="Screenshots">
@@ -369,6 +571,7 @@ export function EntryCards({
             <Card size="1" className={styles.entryCard}>
               <EntryHeader
                 entry={entry}
+                review={context.review[entry.id]}
                 mode="card"
                 selected={open}
                 controls={panelId}
@@ -376,10 +579,7 @@ export function EntryCards({
                 onRemove={() => actions.onRemove(entry.id)}
               />
               {open && (
-                <Flex id={panelId} direction="column" gap="4" pt="3" minWidth="0">
-                  <Screenshot entry={entry} sticky={false} />
-                  <EntryBody entry={entry} paused={paused} actions={actions} />
-                </Flex>
+                <EntryCardPanel entry={entry} panelId={panelId} paused={paused} actions={actions} context={context} />
               )}
             </Card>
           </li>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useReducer, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent, useMemo, useReducer, useRef, useState } from "react";
 import { Box, Button, Callout, Card, Flex, Grid, Heading, Text, TextField } from "@radix-ui/themes";
 import { NavIcon } from "@/components/shell/NavIcons";
 import {
@@ -11,27 +11,26 @@ import {
   errorText,
   type PlaygroundStatusBody,
 } from "@/modules/playground";
+import { batchReducer, initialBatchState } from "@/modules/playground/batch";
 import {
   MAX_BATCH_IMAGES,
   QUEUE_CONCURRENCY,
   batchNotes,
   hasRetryableFailures,
-  initialQueueState,
   interpretResponse,
   pickStartable,
   planBatch,
-  queueReducer,
   resolveSelection,
   type BatchNotes,
   type NewEntry,
   type QueueEntry,
 } from "@/modules/playground/queue";
-import { EntryCards, EntryDetail, EntryRail, type EntryActions } from "./TryEntries";
+import { EntryCards, EntryDetail, EntryRail, type EntryActions, type ReviewContext } from "./TryEntries";
 import { TrySummary } from "./TrySummary";
+import { DESKTOP_QUERY, useMediaQuery } from "./hooks";
 import styles from "./TryPlayground.module.css";
 
 const PASSCODE_STORAGE_KEY = "elite-ledger:try-passcode";
-const DESKTOP_QUERY = "(min-width: 1024px)";
 
 function readStoredPasscode(): string {
   try {
@@ -48,21 +47,6 @@ function storePasscode(value: string | null): void {
   } catch {
     // ignore
   }
-}
-
-function subscribeToDesktop(onChange: () => void): () => void {
-  const query = window.matchMedia(DESKTOP_QUERY);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-}
-
-/** Rail + detail from 1024px, stacked cards below. Phones first: the server renders the cards. */
-function useIsDesktop(): boolean {
-  return useSyncExternalStore(
-    subscribeToDesktop,
-    () => window.matchMedia(DESKTOP_QUERY).matches,
-    () => false,
-  );
 }
 
 /** Every file of a drop. A file that is not an image still gets its (failed) line in the list. */
@@ -89,7 +73,8 @@ export function TryPlayground() {
   const [status, setStatus] = useState<PlaygroundStatusBody | null>(null);
   const [passcode, setPasscode] = useState("");
   const [passcodeRejected, setPasscodeRejected] = useState(false);
-  const [queue, dispatch] = useReducer(queueReducer<File>, undefined, initialQueueState<File>);
+  // The upload queue and the human review of every finished read, behind one reducer.
+  const [{ queue, review }, dispatch] = useReducer(batchReducer<File>, undefined, initialBatchState<File>);
   const [notes, setNotes] = useState<BatchNotes>({ cap: null, duplicates: null });
   const [dragOver, setDragOver] = useState(false);
   /** The user's own choice of entry: undefined = none yet, null = closed everything (cards). */
@@ -99,9 +84,20 @@ export function TryPlayground() {
   const liveUrls = useRef(new Set<string>());
   const nextId = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const isDesktop = useIsDesktop();
+  // Rail + detail from 1024px, stacked cards below. Phones first: the server renders the cards.
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
 
   const { entries, paused } = queue;
+  /** Every character name read so far, offered while correcting one. */
+  const characters = useMemo(
+    () => [
+      ...new Set(
+        entries.flatMap((entry) => (entry.state === "done" && entry.body ? entry.body.result.characters : [])),
+      ),
+    ],
+    [entries],
+  );
+  const context: ReviewContext = { review, dispatch, characters };
   const disabled = status !== null && !status.enabled;
 
   // Ask the server whether a passcode is needed; reuse one from this tab's session.
@@ -452,7 +448,7 @@ export function TryPlayground() {
         </>
       )}
 
-      {hasEntries && <TrySummary entries={entries} />}
+      {hasEntries && <TrySummary entries={entries} review={review} />}
 
       {hasEntries && isDesktop && (
         <Grid columns="232px minmax(0, 1fr)" gap="4" align="start">
@@ -462,12 +458,16 @@ export function TryPlayground() {
             {batchBar}
             <EntryRail
               entries={entries}
+              review={review}
               selectedId={selectedId}
               onSelect={(id) => setPicked(id)}
               onRemove={actions.onRemove}
             />
           </Flex>
-          {selected && <EntryDetail entry={selected} paused={paused} actions={actions} />}
+          {/* Keyed so the rows stagger in again, and the row link starts clean, for a different image. */}
+          {selected && (
+            <EntryDetail key={selected.id} entry={selected} paused={paused} actions={actions} context={context} />
+          )}
         </Grid>
       )}
 
@@ -482,6 +482,7 @@ export function TryPlayground() {
             paused={paused}
             onToggle={(id) => setPicked(id === selectedId ? null : id)}
             actions={actions}
+            context={context}
           />
         </>
       )}
