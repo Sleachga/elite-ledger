@@ -396,6 +396,13 @@ describe("selection", () => {
     expect(autoSelectId(finished.entries)).toBe("b");
   });
 
+  it("without the fallback, nothing is selected until a read finishes", () => {
+    expect(autoSelectId(queueOf("a", "b").entries, false)).toBeNull();
+    expect(resolveSelection(queueOf("a", "b").entries, undefined, false)).toBeNull();
+    expect(autoSelectId(finished.entries, false)).toBe("b");
+    expect(resolveSelection(finished.entries, "c", false)).toBe("c");
+  });
+
   it("a failure does not count as finished reading", () => {
     const state = run(
       [

@@ -237,15 +237,17 @@ export function canRetryEntry(entry: QueueEntry): boolean {
 
 /**
  * Which entry to show when the user has not picked one: the first that
- * finished reading, else the first in the list.
+ * finished reading. Until one has, the first in the list (the desktop detail
+ * pane is never empty), or nothing with `fallbackToFirst` off (phones: no
+ * card opens by itself before there is a result to show).
  */
-export function autoSelectId(entries: readonly QueueEntry[]): string | null {
+export function autoSelectId(entries: readonly QueueEntry[], fallbackToFirst = true): string | null {
   let first: QueueEntry | null = null;
   for (const entry of entries) {
     if (entry.state !== "done" || entry.finishedAt === undefined) continue;
     if (first === null || entry.finishedAt < (first.finishedAt ?? Infinity)) first = entry;
   }
-  return first?.id ?? entries[0]?.id ?? null;
+  return first?.id ?? (fallbackToFirst ? (entries[0]?.id ?? null) : null);
 }
 
 /**
@@ -257,10 +259,11 @@ export function autoSelectId(entries: readonly QueueEntry[]): string | null {
 export function resolveSelection(
   entries: readonly QueueEntry[],
   picked: string | null | undefined,
+  fallbackToFirst = true,
 ): string | null {
   if (picked === null) return null;
   if (picked !== undefined && entries.some((entry) => entry.id === picked)) return picked;
-  return autoSelectId(entries);
+  return autoSelectId(entries, fallbackToFirst);
 }
 
 /** Same name + size + lastModified = the same file, as far as a batch cares. */
