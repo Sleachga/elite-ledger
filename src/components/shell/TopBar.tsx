@@ -3,7 +3,7 @@
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
 import { Box, Button, Container, Flex, Link } from "@radix-ui/themes";
-import { isActivePath, TOP_NAV } from "./nav";
+import { isActivePath, TOP_NAV, UPLOAD_HREF } from "./nav";
 import { Wordmark } from "./Wordmark";
 
 export function TopBar({ guildName }: { guildName: string }) {
@@ -52,7 +52,7 @@ export function TopBar({ guildName }: { guildName: string }) {
 
             <Box display={{ initial: "none", sm: "block" }}>
               <Button asChild size="2">
-                <NextLink href="/upload">Upload</NextLink>
+                <NextLink href={UPLOAD_HREF}>Upload</NextLink>
               </Button>
             </Box>
           </Flex>

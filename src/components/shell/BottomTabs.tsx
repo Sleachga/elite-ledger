@@ -3,7 +3,7 @@
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
 import { Box, Flex, Text } from "@radix-ui/themes";
-import { isActivePath } from "./nav";
+import { isActivePath, UPLOAD_HREF } from "./nav";
 import { NavIcon, type NavIconName } from "./NavIcons";
 
 interface Tab {
@@ -16,7 +16,7 @@ interface Tab {
 const TABS: readonly Tab[] = [
   { href: "/", label: "Progress", icon: "progress" },
   { href: "/contributors", label: "Contributors", icon: "people" },
-  { href: "/upload", label: "Upload", icon: "upload", primary: true },
+  { href: UPLOAD_HREF, label: "Upload", icon: "upload", primary: true },
   { href: "/ledger", label: "Ledger", icon: "ledger" },
   { href: "/more", label: "More", icon: "more" },
 ];

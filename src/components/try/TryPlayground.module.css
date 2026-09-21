@@ -1,0 +1,127 @@
+/* Drop zone: a <label> around a visually hidden file input. */
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 220px;
+  padding: var(--space-5) var(--space-4);
+  border: 1px dashed var(--gray-a8);
+  border-radius: var(--radius-4);
+  background: var(--gray-a2);
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color 200ms ease-out,
+    background-color 200ms ease-out;
+}
+
+.dropzone:hover,
+.dropzone[data-drag-over="true"] {
+  border-color: var(--accent-9);
+  background: var(--accent-a3);
+}
+
+.dropzone:focus-within {
+  outline: 2px solid var(--focus-8);
+  outline-offset: 2px;
+}
+
+.dropzone[data-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Screenshot: on top on phones; sticky left column from 1024px. */
+.shot {
+  min-width: 0;
+}
+
+.shotImage {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-3);
+  border: 1px solid var(--gray-a5);
+}
+
+@media (min-width: 1024px) {
+  .shot {
+    position: sticky;
+    top: 72px;
+    max-height: calc(100dvh - 96px);
+    overflow: auto;
+  }
+}
+
+.row:hover {
+  background-color: var(--gray-a3);
+}
+
+.listRow {
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--gray-a4);
+}
+
+.listRow:last-child {
+  border-bottom: 0;
+}
+
+.numeric {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/*
+ * Low-confidence rows: one pulse, then a static highlight (CLAUDE.md motion
+ * rules). `both` keeps the row clear until its stagger delay has passed.
+ */
+.flagged,
+.flagged:hover {
+  --flag-rest: var(--amber-a3);
+  --flag-peak: var(--amber-a6);
+  background-color: var(--flag-rest);
+  animation: flag-pulse 600ms ease-out 1 both;
+}
+
+.flagged[data-level="low"],
+.flagged[data-level="low"]:hover {
+  --flag-rest: var(--red-a3);
+  --flag-peak: var(--red-a6);
+}
+
+@keyframes flag-pulse {
+  0% {
+    background-color: transparent;
+  }
+  45% {
+    background-color: var(--flag-peak);
+  }
+  100% {
+    background-color: var(--flag-rest);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dropzone {
+    transition: none;
+  }
+
+  .flagged,
+  .flagged:hover {
+    animation: none;
+  }
+}
