@@ -5,6 +5,14 @@ const nextConfig: NextConfig = {
   // its wasm loading); they are required from node_modules at runtime.
   serverExternalPackages: ["@electric-sql/pglite", "postgres"],
 
+  // extract() reads the reference icons from disk at request time
+  // (`<cwd>/public/icons`), which build-time tracing cannot see. Ship them with
+  // the one serverless function that calls it. Globs are relative to the
+  // project root, which is also the function's cwd on Vercel.
+  outputFileTracingIncludes: {
+    "/api/try-extract": ["./public/icons/**/*", "./src/catalog/**/*.json"],
+  },
+
   // Turbopack (the default) needs no options. Declaring the key keeps Next
   // from refusing to start because a `webpack` hook is also present.
   turbopack: {},
