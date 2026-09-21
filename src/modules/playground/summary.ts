@@ -7,10 +7,17 @@ import type { ExtractionResult, ParsedRow } from "@/modules/extractor";
 import { confidenceLevel, totalsByItem, type ConfidenceLevel, type ItemTotal } from "./index";
 import type { QueueEntry } from "./queue";
 
-type ResultRows = Pick<ExtractionResult, "rows" | "looksLikeBankLog">;
+/** What the totals read from a row: an extracted `ParsedRow` and a corrected review row both fit. */
+type CountedRow = Pick<ParsedRow, "itemId" | "quantity" | "character">;
+
+/** An extraction result, or an image's corrected rows (`reviewedImages` in `batch.ts`). */
+interface ResultRows<R extends CountedRow = CountedRow> {
+  looksLikeBankLog: boolean;
+  rows: readonly R[];
+}
 
 /** Rows that count: a result that is not a bank log contributes nothing. */
-function countedRows(result: ResultRows): readonly ParsedRow[] {
+function countedRows<R extends CountedRow>(result: ResultRows<R>): readonly R[] {
   return result.looksLikeBankLog ? result.rows : [];
 }
 
