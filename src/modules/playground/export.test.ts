@@ -107,7 +107,7 @@ describe("buildFixture", () => {
 
   it("rebuilds every vendored fixture from its own rows", () => {
     const root = join(process.cwd(), "fixtures", "extractor");
-    const names = readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+    const names = readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory() && !entry.name.startsWith("."));
     expect(names.length).toBeGreaterThan(0);
     for (const { name } of names) {
       const parsed = JSON.parse(readFileSync(join(root, name, "expected.json"), "utf8")) as {

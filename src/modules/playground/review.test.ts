@@ -102,7 +102,7 @@ describe("rowBox / rowQuantityText (tolerant accessors)", () => {
     const review = createImageReview([
       row("gold-ingot", "112", { box: { top: 0.1, bottom: 0.2 }, quantityText: "112" }),
       row("gold-ingot", "112"),
-      row("gold-ingot", "112", { box: { top: 1, bottom: 0 }, quantityText: 5 }),
+      row("gold-ingot", "112", { box: { top: 1, bottom: 0 }, quantityText: 5 as unknown as string }),
     ]);
     expect(review.rows[0]).toMatchObject({ box: { top: 0.1, bottom: 0.2 }, quantityText: "112" });
     expect(review.rows[1]).toMatchObject({ box: null, quantityText: null, checked: true });
