@@ -1,0 +1,126 @@
+{
+  "looksLikeBankLog": true,
+  "rows": [
+    {
+      "itemId": "silver-coin",
+      "iconDescription": "Synthetic fixture: drawn from the silver-coin reference icon.",
+      "quantity": "5,000,000",
+      "quantityText": "5,000,000",
+      "box": {
+        "top": 0.0875,
+        "bottom": 0.1987
+      },
+      "gameTimestamp": "13.09.2026 - 19:22",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "silver-coin",
+      "iconDescription": "Synthetic fixture: drawn from the silver-coin reference icon.",
+      "quantity": "50,000,000",
+      "quantityText": "50,000,000",
+      "box": {
+        "top": 0.1987,
+        "bottom": 0.3098
+      },
+      "gameTimestamp": "13.09.2026 - 19:21",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "iron-ingot",
+      "iconDescription": "Synthetic fixture: drawn from the iron-ingot reference icon.",
+      "quantity": "5000",
+      "quantityText": "5000",
+      "box": {
+        "top": 0.3098,
+        "bottom": 0.4209
+      },
+      "gameTimestamp": "13.09.2026 - 19:20",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "silver-coin",
+      "iconDescription": "Synthetic fixture: drawn from the silver-coin reference icon.",
+      "quantity": "500,000,000",
+      "quantityText": "500,000,000",
+      "box": {
+        "top": 0.4209,
+        "bottom": 0.532
+      },
+      "gameTimestamp": "13.09.2026 - 19:18",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "silver-coin",
+      "iconDescription": "Synthetic fixture: drawn from the silver-coin reference icon.",
+      "quantity": "1,250,000,000",
+      "quantityText": "1,250,000,000",
+      "box": {
+        "top": 0.532,
+        "bottom": 0.6431
+      },
+      "gameTimestamp": "13.09.2026 - 19:15",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "silver-ingot",
+      "iconDescription": "Synthetic fixture: drawn from the silver-ingot reference icon.",
+      "quantity": "500",
+      "quantityText": "500",
+      "box": {
+        "top": 0.6431,
+        "bottom": 0.7542
+      },
+      "gameTimestamp": "13.09.2026 - 19:14",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "silver-coin",
+      "iconDescription": "Synthetic fixture: drawn from the silver-coin reference icon.",
+      "quantity": "10,000,000,000",
+      "quantityText": "10,000,000,000",
+      "box": {
+        "top": 0.7542,
+        "bottom": 0.8653
+      },
+      "gameTimestamp": "13.09.2026 - 19:11",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "silver-coin",
+      "iconDescription": "Synthetic fixture: drawn from the silver-coin reference icon.",
+      "quantity": "75,500,000",
+      "quantityText": "75,500,000",
+      "box": {
+        "top": 0.8653,
+        "bottom": 0.9764
+      },
+      "gameTimestamp": "13.09.2026 - 19:09",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    }
+  ],
+  "notes": []
+}

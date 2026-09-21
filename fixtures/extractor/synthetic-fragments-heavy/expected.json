@@ -1,0 +1,145 @@
+{
+  "looksLikeBankLog": true,
+  "rows": [
+    {
+      "itemId": "fragment-ring-of-night",
+      "quantity": "2",
+      "gameTimestamp": "12.09.2026 - 21:48",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.0525,
+        "bottom": 0.1192
+      }
+    },
+    {
+      "itemId": "fragment-necklace-of-starlight",
+      "quantity": "1",
+      "gameTimestamp": "12.09.2026 - 21:47",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.1192,
+        "bottom": 0.1859
+      }
+    },
+    {
+      "itemId": "gold-ingot",
+      "quantity": "12",
+      "gameTimestamp": "12.09.2026 - 21:47",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.1859,
+        "bottom": 0.2525
+      }
+    },
+    {
+      "itemId": "fragment-pirates-earring",
+      "quantity": "5",
+      "gameTimestamp": "12.09.2026 - 21:45",
+      "character": "xReacher",
+      "box": {
+        "top": 0.2525,
+        "bottom": 0.3192
+      }
+    },
+    {
+      "itemId": "fragment-bracelet-of-faith",
+      "quantity": "12",
+      "gameTimestamp": "12.09.2026 - 21:44",
+      "character": "xReacher",
+      "box": {
+        "top": 0.3192,
+        "bottom": 0.3859
+      }
+    },
+    {
+      "itemId": "fragment-necklace-of-starlight",
+      "quantity": "5",
+      "gameTimestamp": "12.09.2026 - 21:40",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.3859,
+        "bottom": 0.4525
+      }
+    },
+    {
+      "itemId": "fragment-ring-of-night",
+      "quantity": "1",
+      "gameTimestamp": "12.09.2026 - 21:39",
+      "character": "xReacher",
+      "box": {
+        "top": 0.4525,
+        "bottom": 0.5192
+      }
+    },
+    {
+      "itemId": "fragment-bracelet-of-faith",
+      "quantity": "2",
+      "gameTimestamp": "12.09.2026 - 21:36",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.5192,
+        "bottom": 0.5859
+      }
+    },
+    {
+      "itemId": "ruby",
+      "quantity": "5",
+      "gameTimestamp": "12.09.2026 - 21:35",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.5859,
+        "bottom": 0.6525
+      }
+    },
+    {
+      "itemId": "fragment-pirates-earring",
+      "quantity": "1",
+      "gameTimestamp": "12.09.2026 - 21:33",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.6525,
+        "bottom": 0.7192
+      }
+    },
+    {
+      "itemId": "fragment-ring-of-night",
+      "quantity": "12",
+      "gameTimestamp": "12.09.2026 - 21:31",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.7192,
+        "bottom": 0.7859
+      }
+    },
+    {
+      "itemId": "fragment-bracelet-of-faith",
+      "quantity": "1",
+      "gameTimestamp": "12.09.2026 - 21:30",
+      "character": "xReacher",
+      "box": {
+        "top": 0.7859,
+        "bottom": 0.8525
+      }
+    },
+    {
+      "itemId": "fragment-necklace-of-starlight",
+      "quantity": "2",
+      "gameTimestamp": "12.09.2026 - 21:28",
+      "character": "xReacher",
+      "box": {
+        "top": 0.8525,
+        "bottom": 0.9192
+      }
+    },
+    {
+      "itemId": "fragment-pirates-earring",
+      "quantity": "12",
+      "gameTimestamp": "12.09.2026 - 21:27",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.9192,
+        "bottom": 0.9859
+      }
+    }
+  ]
+}

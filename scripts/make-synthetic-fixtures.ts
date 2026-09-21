@@ -5,7 +5,8 @@
  * a model would plausibly return, withdrawals and display formatting
  * included). One definition feeds all three files, so they cannot drift.
  *
- *   pnpm fixtures:extractor
+ *   pnpm fixtures:extractor                    every fixture
+ *   pnpm fixtures:extractor <name> [<name>]    only the named ones
  *
  * The PNGs are committed: text rendering depends on the machine's fonts, and
  * the eval has to be deterministic. Re-run only to change the fixtures. These
@@ -58,6 +59,19 @@ interface LogFixture {
   name: string;
   kind: "log";
   rows: LogRow[];
+  /**
+   * Icon slot edge in px. The game draws log icons at about 48px, which is
+   * what makes the fragments hard to tell apart; the first fixtures used 50.
+   */
+  slot?: number;
+  /** Font size of the inline Silver Coin amount. The game prints it small; the first fixtures used 16. */
+  amountPx?: number;
+  /**
+   * Write the mock response without `quantityText` / `box`, the way the model
+   * answered before those fields existed, so `--mock` keeps exercising the
+   * lenient parse of older responses.
+   */
+  legacyMock?: boolean;
 }
 
 interface InventoryFixture {
@@ -79,6 +93,7 @@ const FIXTURES: (LogFixture | InventoryFixture)[] = [
     // Identical single-Nyxium rows (no overlay -> 1) next to stacked rows.
     name: "synthetic-mixed-stacks",
     kind: "log",
+    legacyMock: true,
     rows: [
       dep("nyxium", "", "06.09.2026 - 23:21", "Leftaltar"),
       dep("nyxium", "", "06.09.2026 - 23:21", "Leftaltar"),
@@ -96,6 +111,7 @@ const FIXTURES: (LogFixture | InventoryFixture)[] = [
     // Silver printed inline (incl. a value past 2^31) and a withdrawal to drop.
     name: "synthetic-silver-and-withdraw",
     kind: "log",
+    legacyMock: true,
     rows: [
       dep("silver-coin", "500,000,000", "07.09.2026 - 18:02", "xReacher"),
       dep("cobalt-ingot", "2000", "07.09.2026 - 18:01", "xReacher"),
@@ -114,6 +130,7 @@ const FIXTURES: (LogFixture | InventoryFixture)[] = [
     // Every tracked item once, to measure item identification across the catalog.
     name: "synthetic-all-items",
     kind: "log",
+    legacyMock: true,
     rows: catalog.map((item, index) =>
       dep(
         item.id,
@@ -122,6 +139,50 @@ const FIXTURES: (LogFixture | InventoryFixture)[] = [
         index % 2 === 0 ? "Leftaltar" : "xReacher",
       ),
     ),
+  },
+  {
+    // Issue #19: the four blueprint fragments share a paper badge and differ
+    // only in a ~30px piece of jewelry. Three rows of each, shuffled, small
+    // stacks (the overlay sits on the badge corner), next to two materials in
+    // the same gold / red palette. Icons at the in-game 48px.
+    name: "synthetic-fragments-heavy",
+    kind: "log",
+    slot: 48,
+    rows: [
+      dep("fragment-ring-of-night", "2", "12.09.2026 - 21:48", "Leftaltar"),
+      dep("fragment-necklace-of-starlight", "", "12.09.2026 - 21:47", "Leftaltar"),
+      dep("gold-ingot", "12", "12.09.2026 - 21:47", "Leftaltar"),
+      dep("fragment-pirates-earring", "5", "12.09.2026 - 21:45", "xReacher"),
+      dep("fragment-bracelet-of-faith", "12", "12.09.2026 - 21:44", "xReacher"),
+      dep("fragment-necklace-of-starlight", "5", "12.09.2026 - 21:40", "Leftaltar"),
+      dep("fragment-ring-of-night", "", "12.09.2026 - 21:39", "xReacher"),
+      dep("fragment-bracelet-of-faith", "2", "12.09.2026 - 21:36", "Leftaltar"),
+      dep("ruby", "5", "12.09.2026 - 21:35", "Leftaltar"),
+      dep("fragment-pirates-earring", "", "12.09.2026 - 21:33", "Leftaltar"),
+      dep("fragment-ring-of-night", "12", "12.09.2026 - 21:31", "Leftaltar"),
+      dep("fragment-bracelet-of-faith", "", "12.09.2026 - 21:30", "xReacher"),
+      dep("fragment-necklace-of-starlight", "2", "12.09.2026 - 21:28", "xReacher"),
+      dep("fragment-pirates-earring", "12", "12.09.2026 - 21:27", "Leftaltar"),
+    ],
+  },
+  {
+    // Issue #19: silver amounts go wrong by a digit group or a digit. Six
+    // magnitudes from 5 million to 10 billion, between two ingot rows whose
+    // overlay numbers must not be mistaken for inline amounts.
+    name: "synthetic-money-heavy",
+    kind: "log",
+    slot: 48,
+    amountPx: 12,
+    rows: [
+      dep("silver-coin", "5,000,000", "13.09.2026 - 19:22", "Leftaltar"),
+      dep("silver-coin", "50,000,000", "13.09.2026 - 19:21", "Leftaltar"),
+      dep("iron-ingot", "5000", "13.09.2026 - 19:20", "Leftaltar"),
+      dep("silver-coin", "500,000,000", "13.09.2026 - 19:18", "xReacher"),
+      dep("silver-coin", "1,250,000,000", "13.09.2026 - 19:15", "xReacher"),
+      dep("silver-ingot", "500", "13.09.2026 - 19:14", "Leftaltar"),
+      dep("silver-coin", "10,000,000,000", "13.09.2026 - 19:11", "Leftaltar"),
+      dep("silver-coin", "75,500,000", "13.09.2026 - 19:09", "xReacher"),
+    ],
   },
   {
     // A wrong upload: an inventory window, not the bank log.
@@ -156,12 +217,13 @@ async function drawSlot(
   y: number,
   size: number,
   overlay: string,
+  pad = 5,
 ) {
   ctx.fillStyle = COLORS.slot;
   ctx.fillRect(x, y, size, size);
 
   const image = await iconOf(item);
-  const inner = size - 10;
+  const inner = size - 2 * pad;
   const scale = Math.min(inner / image.width, inner / image.height);
   const w = image.width * scale;
   const h = image.height * scale;
@@ -194,11 +256,24 @@ function drawArrow(ctx: SKRSContext2D, cx: number, cy: number, direction: LogRow
   ctx.fill();
 }
 
+const LOG = { width: 780, headerHeight: 52, rowHeight: 66, footer: 14 } as const;
+
+function logHeight(fixture: LogFixture): number {
+  return LOG.headerHeight + fixture.rows.length * LOG.rowHeight + LOG.footer;
+}
+
+/** A row's vertical extent as fractions of the image height: what the model is asked for as `box`. */
+function rowBox(fixture: LogFixture, index: number): { top: number; bottom: number } {
+  const height = logHeight(fixture);
+  const top = LOG.headerHeight + index * LOG.rowHeight;
+  const round = (value: number) => Math.round(value * 10000) / 10000;
+  return { top: round(top / height), bottom: round((top + LOG.rowHeight) / height) };
+}
+
 async function drawLog(fixture: LogFixture): Promise<Buffer> {
-  const width = 780;
-  const headerHeight = 52;
-  const rowHeight = 66;
-  const height = headerHeight + fixture.rows.length * rowHeight + 14;
+  const { width, headerHeight, rowHeight } = LOG;
+  const height = logHeight(fixture);
+  const slot = fixture.slot ?? 50;
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 
@@ -226,13 +301,23 @@ async function drawLog(fixture: LogFixture): Promise<Buffer> {
 
     // Currency prints its amount inline in gold; everything else overlays it.
     const inline = item.kind === "currency";
-    await drawSlot(ctx, item, 58, top + 8, 50, inline ? "" : row.shown);
+    // 50px slots keep the first fixtures' 5px art padding; 48px ones fill the slot like the game.
+    await drawSlot(
+      ctx,
+      item,
+      58,
+      top + (rowHeight - slot) / 2,
+      slot,
+      inline ? "" : row.shown,
+      fixture.slot === undefined ? 5 : 3,
+    );
 
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     if (inline) {
       ctx.fillStyle = COLORS.gold;
-      ctx.font = `600 16px ${FONT}`;
+      ctx.font =
+        fixture.amountPx === undefined ? `600 16px ${FONT}` : `${fixture.amountPx}px ${FONT}`;
       ctx.fillText(row.shown, 120, middle);
     }
 
@@ -303,7 +388,12 @@ async function writeJson(file: string, value: unknown) {
 }
 
 async function main() {
+  const only = process.argv.slice(2);
+  const unknown = only.filter((name) => !FIXTURES.some((fixture) => fixture.name === name));
+  if (unknown.length > 0) throw new Error(`no such fixture: ${unknown.join(", ")}`);
+
   for (const fixture of FIXTURES) {
+    if (only.length > 0 && !only.includes(fixture.name)) continue;
     const dir = path.join(ROOT, fixture.name);
     await mkdir(dir, { recursive: true });
 
@@ -319,21 +409,27 @@ async function main() {
       await writeFile(path.join(dir, "screenshot.png"), await drawLog(fixture));
       await writeJson(path.join(dir, "expected.json"), {
         looksLikeBankLog: true,
-        rows: fixture.rows
-          .filter((row) => row.direction === "deposit")
-          .map((row) => ({
-            itemId: row.itemId,
-            quantity: digits(row.shown),
-            gameTimestamp: row.gameTimestamp,
-            character: row.character,
-          })),
+        rows: fixture.rows.flatMap((row, index) =>
+          row.direction === "deposit"
+            ? [
+                {
+                  itemId: row.itemId,
+                  quantity: digits(row.shown),
+                  gameTimestamp: row.gameTimestamp,
+                  character: row.character,
+                  ...(fixture.legacyMock ? {} : { box: rowBox(fixture, index) }),
+                },
+              ]
+            : [],
+        ),
       });
       await writeJson(path.join(dir, "mock-response.json"), {
         looksLikeBankLog: true,
-        rows: fixture.rows.map((row) => ({
+        rows: fixture.rows.map((row, index) => ({
           itemId: row.itemId,
           iconDescription: `Synthetic fixture: drawn from the ${row.itemId} reference icon.`,
           quantity: row.shown,
+          ...(fixture.legacyMock ? {} : { quantityText: row.shown, box: rowBox(fixture, index) }),
           gameTimestamp: row.gameTimestamp,
           character: row.character,
           direction: row.direction,
