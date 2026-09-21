@@ -4,7 +4,7 @@ import { TryPlayground } from "@/components/try/TryPlayground";
 
 export const metadata: Metadata = {
   title: "Try the extractor",
-  description: "Playground: see what the extractor reads from a guild bank-log screenshot. Nothing is saved.",
+  description: "Playground: see what the extractor reads from guild bank-log screenshots. Nothing is saved.",
 };
 
 export default function TryPage() {
@@ -20,10 +20,14 @@ export default function TryPage() {
           </Badge>
         </Flex>
         <Text as="p" color="gray" style={{ margin: 0 }}>
-          Upload a guild bank-log screenshot and see the deposit rows Claude reads from it.
+          Upload guild bank-log screenshots, several at once, and see the deposit rows Claude reads from
+          each.
         </Text>
         <Text as="p" size="2" weight="medium" style={{ margin: 0 }}>
           Playground — nothing is saved to the ledger.
+        </Text>
+        <Text as="p" size="2" color="gray" style={{ margin: 0 }}>
+          Avoid overlapping screenshots — every row is counted as its own deposit.
         </Text>
       </Flex>
       <TryPlayground />

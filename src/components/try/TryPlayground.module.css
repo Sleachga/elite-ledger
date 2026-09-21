@@ -33,6 +33,13 @@
   opacity: 0.6;
 }
 
+/* Once the batch has entries the drop zone shrinks to one "add more" row. */
+.dropzone[data-compact="true"] {
+  flex-direction: row;
+  min-height: 0;
+  padding: var(--space-3) var(--space-4);
+}
+
 .fileInput {
   position: absolute;
   width: 1px;
@@ -46,7 +53,8 @@
 }
 
 /* Screenshot: on top on phones; sticky left column from 1024px. */
-.shot {
+.shot,
+.shotStacked {
   min-width: 0;
 }
 
@@ -59,12 +67,154 @@
 }
 
 @media (min-width: 1024px) {
-  .shot {
+  .shot,
+  .rail {
     position: sticky;
     top: 72px;
     max-height: calc(100dvh - 96px);
     overflow: auto;
   }
+}
+
+/* Image list: the left rail from 1024px, the card headers below that. */
+.rail {
+  min-width: 0;
+}
+
+.entryList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entryCard {
+  min-width: 0;
+}
+
+.entryHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.entryHeader[data-mode="rail"] {
+  padding: var(--space-2);
+  padding-right: var(--space-3);
+  border: 1px solid var(--gray-a4);
+  border-radius: var(--radius-3);
+  transition:
+    border-color 200ms ease-out,
+    background-color 200ms ease-out;
+}
+
+.entryHeader[data-mode="rail"]:hover {
+  background: var(--gray-a3);
+}
+
+.entryHeader[data-mode="rail"][data-selected="true"] {
+  border-color: var(--accent-a8);
+  background: var(--accent-a3);
+}
+
+.entrySelect {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-2);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.entrySelect:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: 2px;
+}
+
+.entryText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.entryName {
+  display: block;
+}
+
+.entryMeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+.thumb {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--gray-a5);
+  border-radius: var(--radius-2);
+  background: var(--gray-a3);
+  color: var(--gray-11);
+  object-fit: cover;
+}
+
+.flagDot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--amber-9);
+}
+
+.flagDot[data-level="low"] {
+  background: var(--red-9);
+}
+
+.chevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--gray-11);
+}
+
+/* Summary strip. */
+.statLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 1023px) {
+  /* 2 columns on phones, 3 on tablets: the first stat takes two cells so the grid closes. */
+  .statWide {
+    grid-column: span 2;
+  }
+}
+
+.characterBadge {
+  max-width: 100%;
+  gap: var(--space-2);
+}
+
+.characterName {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .row:hover {
@@ -116,7 +266,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dropzone {
+  .dropzone,
+  .entryHeader[data-mode="rail"] {
     transition: none;
   }
 
