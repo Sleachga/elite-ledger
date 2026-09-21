@@ -101,7 +101,7 @@ the only code allowed to import `@anthropic-ai/sdk` (ESLint
 import { extract, ExtractorError } from "@/modules/extractor";
 
 const result = await extract({ image, mediaType: "image/png", knownCharacters: ["Leftaltar"] });
-// { looksLikeBankLog, rows, characters, warnings, model, usage }
+// { looksLikeBankLog, rows, characters, warnings, model, usage, upscale }
 ```
 
 One request per screenshot to `claude-opus-5`: the system prompt, then every
@@ -117,8 +117,52 @@ confidence, a reason when it is low, and a short icon description for the
 text-only second judge. Every failure is an `ExtractorError` with a `kind`:
 `refusal`, `rate_limit`, `api`, `network`, `invalid_output` or `config`.
 
+**Upscaling.** A log icon is about 48px and the part that tells the four
+blueprint fragments apart about 30px, so small screenshots are enlarged before
+they are sent (`sharp`, Lanczos, re-encoded as PNG): `scale = min(2, 1568 /
+longEdge)`, applied only when that is at least 1.15, never downscaling. If the
+enlarged PNG would pass 4.5 MB it tries half the enlargement, then sends the
+upload as it is; the same happens if the image cannot be read or `sharp` cannot
+load, so upscaling never fails an extraction. `result.upscale` says what was
+sent (`{ applied, scale, width, height, reason? }`). 1568px is the long edge
+every model takes unresized; `claude-opus-5` accepts 2576px, which
+`EXTRACTOR_UPSCALE_MAX_EDGE=2576` allows (not measured yet, see
+`docs/extractor-eval.md`).
+
+**Two more fields per row**, both optional in the type because answers recorded
+before they existed still parse:
+
+- `quantityText`: the amount exactly as displayed, separators included
+  (`"500,000,000"`, `"1000"`, `""` when the row shows no number). `quantity`
+  stays the digit string to store.
+- `box`: `{ top, bottom }`, the row's vertical extent as fractions 0-1 of the
+  image height. They are fractions, so they fit the uploaded image whatever
+  size was sent to the model. A box that makes no sense (not numbers, outside
+  the image, `top >= bottom`) is dropped; when every row has one, rows are
+  sorted top to bottom.
+
+**Amounts are read twice.** The model copies the printed amount
+(`quantityText`) and also writes it as digits (`quantity`). A printed amount
+with separators must be in groups of three (`^\d{1,3}([,.\s]\d{3})*$`, with
+apostrophe and underscore accepted as separators too), which is where a dropped
+or doubled digit shows. If the grouping is broken the row's
+confidence is capped at 0.5 and the reason says the amount looked malformed; if
+both readings are well-formed but differ, the printed digits are kept and the
+row is flagged the same way.
+
+**Always double-checked.** Blueprint-fragment rows and Silver Coin rows never
+come back with a confidence above 0.8, whatever the model said, and their
+`lowConfidenceReason` ends with "Blueprint fragments are always
+double-checked." or "Money amounts are always double-checked.". A wrong fragment
+or a wrong magnitude is too costly to wave through, so the verify screen always
+asks a human about these rows. The prompt also carries one line per fragment on
+what its jewelry looks like (the paper badge they share is to be ignored) and
+asks for the icon description before the item id.
+
 Settings (`.env`): `ANTHROPIC_API_KEY`; `EXTRACTOR_MODEL` (default
 `claude-opus-5`); `EXTRACTOR_EFFORT` (`low`...`max`, unset = API default);
+`EXTRACTOR_UPSCALE` (`on`/`off`, default on); `EXTRACTOR_UPSCALE_MAX_EDGE`
+(px, default 1568);
 `EXTRACTOR_FALLBACKS` (`on`/`off`). Fallbacks are the API's server-side refusal
 fallback (`fallbacks: "default"`, beta): if a safety classifier declines the
 request it is re-run on Anthropic's recommended substitute model inside the
@@ -131,28 +175,40 @@ by default for `claude-opus-5`, off for any other model.
 pnpm eval:extractor --mock                 # canned model output, no key, no network (CI)
 pnpm eval:extractor                        # live: one API call per fixture, needs ANTHROPIC_API_KEY
 pnpm eval:extractor --json --min-accuracy 0.95 synthetic-all-items
+pnpm eval:extractor --json --upscale off   # same run without the enlargement, to compare
 ```
 
 It runs each fixture through `extract()`, matches rows order-insensitively on
 (item id, quantity, game timestamp, character) and prints matched / expected /
 extra per fixture plus totals: row accuracy (`matched / (matched + missing +
-extra)`), item-id accuracy, quantity accuracy. It exits non-zero below
-`--min-accuracy` (default 0). `--json` writes a report to
-`fixtures/extractor/.results/` (gitignored). `--fixtures <dir>` points it at
-another folder; trailing names select fixtures. `EXTRACTOR_MODEL` makes it the
-eval for trying a cheaper model.
+extra)`), item-id accuracy, quantity accuracy, and the two categories where a
+mistake costs the most: **fragment item-id** accuracy (over blueprint-fragment
+rows) and **silver quantity** accuracy (over Silver Coin rows). "row boxes" is
+the share of expected boxes that contain the centre of the reported one. Live
+runs end with the token totals. It exits non-zero below `--min-accuracy`
+(default 0). `--json` writes a report to `fixtures/extractor/.results/`
+(gitignored). `--fixtures <dir>` points it at another folder; trailing names
+select fixtures. `--upscale on|off` and `--max-edge <px>` override
+`EXTRACTOR_UPSCALE` / `EXTRACTOR_UPSCALE_MAX_EDGE`. `EXTRACTOR_MODEL` makes it
+the eval for trying a cheaper model. Measured results are logged in
+`docs/extractor-eval.md`.
 
 Fixtures live in `fixtures/extractor/<name>/`:
 
 - `screenshot.png` (or `.jpg` / `.webp`)
-- `expected.json`: `{ "looksLikeBankLog": true, "rows": [{ "itemId", "quantity", "gameTimestamp", "character" }] }`, deposit rows only
+- `expected.json`: `{ "looksLikeBankLog": true, "rows": [{ "itemId", "quantity", "gameTimestamp", "character", "box"? }] }`, deposit rows only; `box` is optional and not part of row matching
 - `mock-response.json` (optional): a canned model answer, withdrawals and
   display formatting included, so `--mock` still exercises the module's rules
 
-The four `synthetic-*` fixtures are drawn by `pnpm fixtures:extractor`
-(`scripts/make-synthetic-fixtures.ts`) from the real icons and approximate the
-game's layout from a description. To add a real screenshot, drop it in a new
-folder with a hand-checked `expected.json`.
+The six `synthetic-*` fixtures are drawn by `pnpm fixtures:extractor`
+(`scripts/make-synthetic-fixtures.ts`; pass fixture names to redraw only those)
+from the real icons and approximate the game's layout from a description.
+`synthetic-fragments-heavy` (all four fragments, three rows each, next to gold
+and ruby) and `synthetic-money-heavy` (silver from 5,000,000 to 10,000,000,000
+in small gold text) draw icons at the in-game 48px. The three older log
+fixtures keep mock answers without `quantityText` / `box`, so `--mock` also
+covers answers from before those fields. To add a real screenshot, drop it in a
+new folder with a hand-checked `expected.json`.
 
 ## Playground (`/try`)
 

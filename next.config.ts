@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Native/WASM database drivers must not be bundled (bundling PGlite breaks
   // its wasm loading); they are required from node_modules at runtime.
+  // `sharp` (the Extractor's upscaler) is on Next's built-in external list, so
+  // it needs no entry here; its native binary is traced into /api/try-extract.
   serverExternalPackages: ["@electric-sql/pglite", "postgres"],
 
   // extract() reads the reference icons from disk at request time

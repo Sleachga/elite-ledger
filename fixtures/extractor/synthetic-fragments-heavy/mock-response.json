@@ -1,0 +1,216 @@
+{
+  "looksLikeBankLog": true,
+  "rows": [
+    {
+      "itemId": "fragment-ring-of-night",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-ring-of-night reference icon.",
+      "quantity": "2",
+      "quantityText": "2",
+      "box": {
+        "top": 0.0525,
+        "bottom": 0.1192
+      },
+      "gameTimestamp": "12.09.2026 - 21:48",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-necklace-of-starlight",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-necklace-of-starlight reference icon.",
+      "quantity": "",
+      "quantityText": "",
+      "box": {
+        "top": 0.1192,
+        "bottom": 0.1859
+      },
+      "gameTimestamp": "12.09.2026 - 21:47",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "gold-ingot",
+      "iconDescription": "Synthetic fixture: drawn from the gold-ingot reference icon.",
+      "quantity": "12",
+      "quantityText": "12",
+      "box": {
+        "top": 0.1859,
+        "bottom": 0.2525
+      },
+      "gameTimestamp": "12.09.2026 - 21:47",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-pirates-earring",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-pirates-earring reference icon.",
+      "quantity": "5",
+      "quantityText": "5",
+      "box": {
+        "top": 0.2525,
+        "bottom": 0.3192
+      },
+      "gameTimestamp": "12.09.2026 - 21:45",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-bracelet-of-faith",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-bracelet-of-faith reference icon.",
+      "quantity": "12",
+      "quantityText": "12",
+      "box": {
+        "top": 0.3192,
+        "bottom": 0.3859
+      },
+      "gameTimestamp": "12.09.2026 - 21:44",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-necklace-of-starlight",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-necklace-of-starlight reference icon.",
+      "quantity": "5",
+      "quantityText": "5",
+      "box": {
+        "top": 0.3859,
+        "bottom": 0.4525
+      },
+      "gameTimestamp": "12.09.2026 - 21:40",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-ring-of-night",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-ring-of-night reference icon.",
+      "quantity": "",
+      "quantityText": "",
+      "box": {
+        "top": 0.4525,
+        "bottom": 0.5192
+      },
+      "gameTimestamp": "12.09.2026 - 21:39",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-bracelet-of-faith",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-bracelet-of-faith reference icon.",
+      "quantity": "2",
+      "quantityText": "2",
+      "box": {
+        "top": 0.5192,
+        "bottom": 0.5859
+      },
+      "gameTimestamp": "12.09.2026 - 21:36",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "ruby",
+      "iconDescription": "Synthetic fixture: drawn from the ruby reference icon.",
+      "quantity": "5",
+      "quantityText": "5",
+      "box": {
+        "top": 0.5859,
+        "bottom": 0.6525
+      },
+      "gameTimestamp": "12.09.2026 - 21:35",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-pirates-earring",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-pirates-earring reference icon.",
+      "quantity": "",
+      "quantityText": "",
+      "box": {
+        "top": 0.6525,
+        "bottom": 0.7192
+      },
+      "gameTimestamp": "12.09.2026 - 21:33",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-ring-of-night",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-ring-of-night reference icon.",
+      "quantity": "12",
+      "quantityText": "12",
+      "box": {
+        "top": 0.7192,
+        "bottom": 0.7859
+      },
+      "gameTimestamp": "12.09.2026 - 21:31",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-bracelet-of-faith",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-bracelet-of-faith reference icon.",
+      "quantity": "",
+      "quantityText": "",
+      "box": {
+        "top": 0.7859,
+        "bottom": 0.8525
+      },
+      "gameTimestamp": "12.09.2026 - 21:30",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-necklace-of-starlight",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-necklace-of-starlight reference icon.",
+      "quantity": "2",
+      "quantityText": "2",
+      "box": {
+        "top": 0.8525,
+        "bottom": 0.9192
+      },
+      "gameTimestamp": "12.09.2026 - 21:28",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-pirates-earring",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-pirates-earring reference icon.",
+      "quantity": "12",
+      "quantityText": "12",
+      "box": {
+        "top": 0.9192,
+        "bottom": 0.9859
+      },
+      "gameTimestamp": "12.09.2026 - 21:27",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    }
+  ],
+  "notes": []
+}
