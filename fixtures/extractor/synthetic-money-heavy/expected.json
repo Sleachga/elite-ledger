@@ -1,0 +1,85 @@
+{
+  "looksLikeBankLog": true,
+  "rows": [
+    {
+      "itemId": "silver-coin",
+      "quantity": "5000000",
+      "gameTimestamp": "13.09.2026 - 19:22",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.0875,
+        "bottom": 0.1987
+      }
+    },
+    {
+      "itemId": "silver-coin",
+      "quantity": "50000000",
+      "gameTimestamp": "13.09.2026 - 19:21",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.1987,
+        "bottom": 0.3098
+      }
+    },
+    {
+      "itemId": "iron-ingot",
+      "quantity": "5000",
+      "gameTimestamp": "13.09.2026 - 19:20",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.3098,
+        "bottom": 0.4209
+      }
+    },
+    {
+      "itemId": "silver-coin",
+      "quantity": "500000000",
+      "gameTimestamp": "13.09.2026 - 19:18",
+      "character": "xReacher",
+      "box": {
+        "top": 0.4209,
+        "bottom": 0.532
+      }
+    },
+    {
+      "itemId": "silver-coin",
+      "quantity": "1250000000",
+      "gameTimestamp": "13.09.2026 - 19:15",
+      "character": "xReacher",
+      "box": {
+        "top": 0.532,
+        "bottom": 0.6431
+      }
+    },
+    {
+      "itemId": "silver-ingot",
+      "quantity": "500",
+      "gameTimestamp": "13.09.2026 - 19:14",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.6431,
+        "bottom": 0.7542
+      }
+    },
+    {
+      "itemId": "silver-coin",
+      "quantity": "10000000000",
+      "gameTimestamp": "13.09.2026 - 19:11",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.7542,
+        "bottom": 0.8653
+      }
+    },
+    {
+      "itemId": "silver-coin",
+      "quantity": "75500000",
+      "gameTimestamp": "13.09.2026 - 19:09",
+      "character": "xReacher",
+      "box": {
+        "top": 0.8653,
+        "bottom": 0.9764
+      }
+    }
+  ]
+}

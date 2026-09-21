@@ -29,6 +29,48 @@ describe("scoreRows", () => {
     expect(score.itemIdCorrect).toBe(1);
     expect(score.quantityCorrect).toBe(0);
   });
+
+  it("scores fragment item ids and Silver Coin quantities as their own categories", () => {
+    const expected = [
+      row("fragment-ring-of-night", "4"),
+      row("fragment-pirates-earring", "2"),
+      row("silver-coin", "500000000"),
+      row("silver-coin", "75500000"),
+      row("gold-ingot", "112"),
+    ];
+    const actual = [
+      row("fragment-necklace-of-starlight", "4"), // wrong fragment, right stack
+      row("fragment-pirates-earring", "2"),
+      row("silver-coin", "50000000"), // a digit group short
+      row("silver-coin", "75500000"),
+      row("gold-ingot", "117"), // wrong, but in neither category
+    ];
+
+    const score = scoreRows(expected, actual);
+
+    expect(score.fragmentItemId).toEqual({ correct: 1, total: 2 });
+    expect(score.silverQuantity).toEqual({ correct: 1, total: 2 });
+    expect(score.matched).toBe(2);
+  });
+
+  it("counts a row missing from the answer against its category", () => {
+    const score = scoreRows([row("fragment-ring-of-night", "4"), row("silver-coin", "5000000")], []);
+
+    expect(score.fragmentItemId).toEqual({ correct: 0, total: 1 });
+    expect(score.silverQuantity).toEqual({ correct: 0, total: 1 });
+  });
+
+  it("checks boxes only where the fixture has them, pairing identical rows by position", () => {
+    const at = (top: number, bottom: number) => ({ ...row("nyxium", "1"), box: { top, bottom } });
+    const expected = [at(0.1, 0.2), at(0.2, 0.3), row("gold-ingot", "112")];
+    // Same rows, listed bottom-up; the second box is far off.
+    const actual = [row("gold-ingot", "112"), at(0.21, 0.29), at(0.6, 0.7)];
+
+    const score = scoreRows(expected, actual);
+
+    expect(score.matched).toBe(3);
+    expect(score.boxes).toEqual({ correct: 1, total: 2 });
+  });
 });
 
 describe("runEval --mock over the shipped fixtures", () => {

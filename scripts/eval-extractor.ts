@@ -1,17 +1,23 @@
 /**
- * pnpm eval:extractor [--mock] [--json] [--min-accuracy 0.9] [--fixtures <dir>] [fixture ...]
+ * pnpm eval:extractor [--mock] [--json] [--min-accuracy 0.9] [--fixtures <dir>]
+ *                     [--upscale on|off] [--max-edge <px>] [fixture ...]
  *
  * Runs every fixture in `fixtures/extractor/` through the extractor and
  * prints per-fixture and total accuracy. `--mock` needs no API key (this is
- * what CI runs); without it each fixture is one real API call.
+ * what CI runs); without it each fixture is one real API call. `--upscale` and
+ * `--max-edge` override EXTRACTOR_UPSCALE / EXTRACTOR_UPSCALE_MAX_EDGE, to
+ * compare runs with and without the enlargement.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
+import type { ExtractDeps } from "@/modules/extractor";
 import { defaultFixturesDir, runEval, type FixtureResult } from "@/modules/extractor/eval";
 import { loadDotEnv } from "./env";
 
 const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
+const category = (accuracy: number, count: { correct: number; total: number }) =>
+  count.total === 0 ? "n/a (no such rows)" : `${percent(accuracy)}   ${count.correct} / ${count.total}`;
 
 function printFixture(result: FixtureResult) {
   const flag =
@@ -30,6 +36,10 @@ function printFixture(result: FixtureResult) {
   for (const row of result.missingRows) console.log(`      missing ${JSON.stringify(row)}`);
   for (const row of result.extraRows) console.log(`      extra   ${JSON.stringify(row)}`);
   for (const warning of result.warnings) console.log(`      warning: ${warning}`);
+  if (result.upscale?.applied) {
+    const { scale, width, height } = result.upscale;
+    console.log(`      sent enlarged ${scale.toFixed(2)}x (upload ${width}x${height})`);
+  }
   if (result.usage && result.usage.inputTokens + result.usage.outputTokens > 0) {
     const u = result.usage;
     console.log(
@@ -46,6 +56,8 @@ async function main() {
       json: { type: "boolean", default: false },
       "min-accuracy": { type: "string", default: "0" },
       fixtures: { type: "string" },
+      upscale: { type: "string" },
+      "max-edge": { type: "string" },
     },
   });
 
@@ -55,6 +67,20 @@ async function main() {
     process.exit(2);
   }
   if (minAccuracy > 1) minAccuracy /= 100; // allow "90" for 90%
+
+  if (values.upscale !== undefined && values.upscale !== "on" && values.upscale !== "off") {
+    console.error(`--upscale must be "on" or "off" (got "${values.upscale}")`);
+    process.exit(2);
+  }
+  const maxEdge = values["max-edge"] === undefined ? undefined : Number(values["max-edge"]);
+  if (maxEdge !== undefined && !Number.isInteger(maxEdge)) {
+    console.error(`--max-edge must be a whole number of pixels (got "${values["max-edge"]}")`);
+    process.exit(2);
+  }
+  const deps: ExtractDeps = {
+    ...(values.upscale === undefined ? {} : { upscale: values.upscale === "on" }),
+    ...(maxEdge === undefined ? {} : { upscaleMaxEdge: maxEdge }),
+  };
 
   loadDotEnv();
   const hasKey = Boolean(
@@ -78,10 +104,20 @@ async function main() {
     fixturesDir,
     mock: values.mock,
     only: positionals,
+    deps,
     onFixture: printFixture,
   });
 
   const t = report.totals;
+  const usage = report.fixtures.reduce(
+    (total, fixture) => ({
+      input: total.input + (fixture.usage?.inputTokens ?? 0),
+      output: total.output + (fixture.usage?.outputTokens ?? 0),
+      cacheWrite: total.cacheWrite + (fixture.usage?.cacheCreationInputTokens ?? 0),
+      cacheRead: total.cacheRead + (fixture.usage?.cacheReadInputTokens ?? 0),
+    }),
+    { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+  );
   console.log(
     [
       "",
@@ -90,7 +126,15 @@ async function main() {
       `row accuracy      ${percent(t.rowAccuracy)}   matched / (matched + missing + extra)`,
       `item-id accuracy  ${percent(t.itemIdAccuracy)}`,
       `quantity accuracy ${percent(t.quantityAccuracy)}`,
+      `fragment item-id  ${category(t.fragmentItemIdAccuracy, t.fragmentItemId)}`,
+      `silver quantity   ${category(t.silverQuantityAccuracy, t.silverQuantity)}`,
+      `row boxes         ${category(t.boxAccuracy, t.boxes)}`,
       `bank-log flag     ${percent(t.bankLogFlagAccuracy)}`,
+      ...(usage.input + usage.output > 0
+        ? [
+            `tokens            in ${usage.input}, out ${usage.output}, cache write ${usage.cacheWrite}, cache read ${usage.cacheRead}`,
+          ]
+        : []),
     ].join("\n"),
   );
 
