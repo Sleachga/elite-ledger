@@ -12,6 +12,8 @@ import { defaultFixturesDir, runEval, type FixtureResult } from "@/modules/extra
 import { loadDotEnv } from "./env";
 
 const percent = (value: number) => `${(value * 100).toFixed(1)}%`;
+const category = (accuracy: number, count: { correct: number; total: number }) =>
+  count.total === 0 ? "n/a (no such rows)" : `${percent(accuracy)}   ${count.correct} / ${count.total}`;
 
 function printFixture(result: FixtureResult) {
   const flag =
@@ -82,6 +84,15 @@ async function main() {
   });
 
   const t = report.totals;
+  const usage = report.fixtures.reduce(
+    (total, fixture) => ({
+      input: total.input + (fixture.usage?.inputTokens ?? 0),
+      output: total.output + (fixture.usage?.outputTokens ?? 0),
+      cacheWrite: total.cacheWrite + (fixture.usage?.cacheCreationInputTokens ?? 0),
+      cacheRead: total.cacheRead + (fixture.usage?.cacheReadInputTokens ?? 0),
+    }),
+    { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
+  );
   console.log(
     [
       "",
@@ -90,7 +101,15 @@ async function main() {
       `row accuracy      ${percent(t.rowAccuracy)}   matched / (matched + missing + extra)`,
       `item-id accuracy  ${percent(t.itemIdAccuracy)}`,
       `quantity accuracy ${percent(t.quantityAccuracy)}`,
+      `fragment item-id  ${category(t.fragmentItemIdAccuracy, t.fragmentItemId)}`,
+      `silver quantity   ${category(t.silverQuantityAccuracy, t.silverQuantity)}`,
+      `row boxes         ${category(t.boxAccuracy, t.boxes)}`,
       `bank-log flag     ${percent(t.bankLogFlagAccuracy)}`,
+      ...(usage.input + usage.output > 0
+        ? [
+            `tokens            in ${usage.input}, out ${usage.output}, cache write ${usage.cacheWrite}, cache read ${usage.cacheRead}`,
+          ]
+        : []),
     ].join("\n"),
   );
 
