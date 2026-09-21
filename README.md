@@ -25,7 +25,7 @@ only to point at a real Postgres (`DATABASE_URL`), set the guild name
 | `pnpm dev:webpack` / `build:webpack` | Same, with webpack — needed on FAT32 checkouts (see below) |
 | `pnpm lint`         | ESLint (`eslint-config-next`)                                       |
 | `pnpm typecheck`    | `tsc --noEmit`                                                      |
-| `pnpm test`         | Vitest (progress, extractor with a fake client, in-memory PGlite migrate/seed) |
+| `pnpm test`         | Vitest (progress, extractor with a fake client, playground route with the extractor mocked, in-memory PGlite migrate/seed) |
 | `pnpm db:generate`  | `drizzle-kit generate`: write a new SQL migration from `src/db/schema.ts` into `drizzle/` |
 | `pnpm db:migrate`   | Apply committed migrations to the configured database               |
 | `pnpm db:seed`      | Migrate, then upsert the catalog and recipes (idempotent)           |
@@ -154,15 +154,50 @@ The four `synthetic-*` fixtures are drawn by `pnpm fixtures:extractor`
 game's layout from a description. To add a real screenshot, drop it in a new
 folder with a hand-checked `expected.json`.
 
+## Playground (`/try`)
+
+`/try` is a throwaway page for testing the Extractor on real screenshots before
+login and the ledger exist: drop, paste (Win+Shift+S, then Ctrl+V) or pick a
+PNG / JPEG / WebP up to 10 MB and it shows the parsed deposit rows with
+confidence, per-item totals, warnings, characters, and the model, duration and
+token usage. **Nothing is saved.** Until the real upload flow lands, the Upload
+button and the mobile Upload tab point here (`UPLOAD_HREF` in
+`src/components/shell/nav.ts`; set it back to `"/upload"` to revert).
+
+The page posts to `POST /api/try-extract` (multipart field `image`), which
+calls `extract()` and returns `{ result, durationMs }` or
+`{ error: { kind, message } }`. Every call spends API credits, so:
+
+- **Passcode.** With `TRY_PASSCODE` set, the request must carry it in the
+  `x-try-passcode` header (the page asks once and keeps it in
+  `sessionStorage`). In production it is always gated: on Vercel (`VERCEL`
+  set) with no `TRY_PASSCODE` the route answers 503 "playground disabled".
+  Locally with no passcode it is open. Set `TRY_PASSCODE` and
+  `ANTHROPIC_API_KEY` in the Vercel project's environment variables.
+- **Rate limit.** 10 requests per 10 minutes per IP, in memory, best effort.
+- `GET /api/try-extract` returns `{ passcodeRequired, enabled }`.
+
+Run it locally with the secrets from 1Password:
+
+```sh
+op run --env-file=.env.tpl -- pnpm dev      # then open http://localhost:3000/try
+```
+
+On Vercel the reference icons reach the function through
+`outputFileTracingIncludes` in `next.config.ts` (`extract()` reads
+`<cwd>/public/icons` from disk). Vercel also caps request bodies at about
+4.5 MB, below the route's own 10 MB limit; crop very large screenshots.
+
 ## Layout
 
 - `src/catalog/` vendored catalog + recipes (pure data)
 - `src/db/` Drizzle schema, driver switch, queries, seed
 - `src/modules/progress/` pure `computeProgress()` with tests
 - `src/modules/extractor/` `extract()`: screenshot to deposit rows via the Claude API, plus the eval
+- `src/modules/playground/` pure helpers for `/try` (BigInt quantity formatting, totals, confidence levels)
 - `fixtures/extractor/` eval fixtures (screenshot + expected rows)
 - `src/components/` Radix Themes UI (`ItemChip`, shell, progress bars)
-- `src/app/` Next.js App Router pages (`/` is Progress; other routes are placeholders)
+- `src/app/` Next.js App Router pages (`/` is Progress, `/try` the playground, `api/try-extract` its route; other routes are placeholders)
 - `drizzle/` generated SQL migrations (committed)
 - `scripts/` `tsx` entry points for migrate / seed / extractor eval / fixture drawing
 
