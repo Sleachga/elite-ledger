@@ -167,6 +167,7 @@ describe("summarize", () => {
       reading: 1,
       queued: 2,
       canceled: 1,
+      ready: 0,
       settled: 5,
       rows: 3,
       lowConfidenceRows: 2,

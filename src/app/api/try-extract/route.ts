@@ -1,6 +1,6 @@
 /**
  * `/api/try-extract`: the `/try` playground's backend.
- *   GET  -> { passcodeRequired, enabled }
+ *   GET  -> { passcodeRequired, enabled, aiEnabled, defaultMode }
  *   POST -> multipart `image` -> { result, durationMs } | { error: { kind, message } }
  * See `handler.ts` for the gate, limits and error mapping.
  */
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 /** One extraction takes 10-20 s; leave room for a slow fallback run. */
 export const maxDuration = 120;
 
-export function GET(): Response {
+export function GET(): Promise<Response> {
   return handleGet();
 }
 

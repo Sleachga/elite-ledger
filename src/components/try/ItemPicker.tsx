@@ -200,6 +200,8 @@ export function ItemPicker({
   strip,
   children,
   onSelect,
+  triggerId,
+  focusAfterPick,
 }: {
   /** Current item id ("unknown" included; "" when nothing is chosen yet). */
   value: string;
@@ -209,17 +211,45 @@ export function ItemPicker({
   strip?: ReactNode;
   children: ReactNode;
   onSelect: (itemId: string) => void;
+  /** An id for the trigger button, so a form can send the focus to it. */
+  triggerId?: string;
+  /** Where the focus goes once an item was picked, instead of back to the trigger (the add-row form: on to the quantity). */
+  focusAfterPick?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const content = useRef<HTMLDivElement | null>(null);
+  /** The picker is closing because a tile was picked (not Escape, not a click outside). */
+  const picked = useRef(false);
 
   const pick = (itemId: string) => {
+    picked.current = true;
     setOpen(false);
     onSelect(itemId);
+    // Straight away, not only once the closing animation is over: whatever is typed next belongs to
+    // the next field. The sheet (a modal dialog) holds the focus while it is open, so it is asked again
+    // once the close has rendered, and a last time in `onCloseAutoFocus`.
+    if (focusAfterPick) {
+      focusAfterPick();
+      window.setTimeout(focusAfterPick, 0);
+    }
+  };
+
+  const onCloseAutoFocus = (event: Event) => {
+    const wasPicked = picked.current;
+    picked.current = false;
+    if (!wasPicked || !focusAfterPick) return;
+    event.preventDefault();
+    focusAfterPick();
   };
 
   const trigger = (
-    <button type="button" className={`${styles.editTrigger} ${styles.editStart}`} aria-label={`${label}. Change`} title="Click to change the item">
+    <button
+      type="button"
+      id={triggerId}
+      className={`${styles.editTrigger} ${styles.editStart}`}
+      aria-label={`${label}. Change`}
+      title="Click to change the item"
+    >
       {children}
     </button>
   );
@@ -233,6 +263,7 @@ export function ItemPicker({
           className={styles.sheet}
           size="2"
           aria-describedby={undefined}
+          onCloseAutoFocus={onCloseAutoFocus}
           // No keyboard popping up over the tiles: focus the current tile, not the filter.
           onOpenAutoFocus={(event) => {
             event.preventDefault();
@@ -274,6 +305,7 @@ export function ItemPicker({
         align="start"
         sideOffset={6}
         collisionPadding={12}
+        onCloseAutoFocus={onCloseAutoFocus}
       >
         <VisuallyHidden>
           <h3>Pick the item</h3>

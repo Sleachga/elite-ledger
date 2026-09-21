@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, useMemo, useReducer, useRef, useState } from "react";
-import { Box, Button, Callout, Card, Flex, Grid, Heading, Text, TextField } from "@radix-ui/themes";
+import { Box, Button, Callout, Card, Flex, Grid, Heading, SegmentedControl, Text, TextField } from "@radix-ui/themes";
 import { NavIcon } from "@/components/shell/NavIcons";
 import {
   ACCEPTED_MEDIA_TYPES,
@@ -11,12 +11,26 @@ import {
   errorText,
   type PlaygroundStatusBody,
 } from "@/modules/playground";
-import { batchReducer, initialBatchState } from "@/modules/playground/batch";
+import { batchReducer, initialBatchState, knownCharacters } from "@/modules/playground/batch";
 import {
+  MODE_LABEL,
+  UPLOAD_MODE_STORAGE_KEY,
+  aiAvailable,
+  availableModes,
+  isUploadMode,
+  modeStatusOf,
+  resolveMode,
+  singleModeNote,
+  type UploadMode,
+} from "@/modules/playground/mode";
+import {
+  BLANK_ENTRY_NAME,
   MAX_BATCH_IMAGES,
   QUEUE_CONCURRENCY,
   batchNotes,
+  blankEntryId,
   hasRetryableFailures,
+  imageEntries,
   interpretResponse,
   pickStartable,
   planBatch,
@@ -49,6 +63,29 @@ function storePasscode(value: string | null): void {
   }
 }
 
+/** The member's own choice of mode, kept per browser. Storage may be blocked: then the admin's default applies. */
+function readStoredMode(): UploadMode | null {
+  try {
+    const value = window.localStorage.getItem(UPLOAD_MODE_STORAGE_KEY);
+    return isUploadMode(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeMode(mode: UploadMode): void {
+  try {
+    window.localStorage.setItem(UPLOAD_MODE_STORAGE_KEY, mode);
+  } catch {
+    // ignore
+  }
+}
+
+const MODE_HINT: Record<UploadMode, string> = {
+  manual: "You add the rows by hand. Nothing is sent anywhere.",
+  ai: "Claude reads each screenshot; you check and correct the rows.",
+};
+
 /** Every file of a drop. A file that is not an image still gets its (failed) line in the list. */
 function droppedFiles(data: DataTransfer | null): File[] {
   return data ? Array.from(data.files) : [];
@@ -71,6 +108,10 @@ function pastedImages(data: DataTransfer | null): File[] {
 
 export function TryPlayground() {
   const [status, setStatus] = useState<PlaygroundStatusBody | null>(null);
+  /** The status call has answered (or failed): only then is it known which modes are on offer. */
+  const [statusSettled, setStatusSettled] = useState(false);
+  /** The member's own choice of mode (remembered per browser); null = none, the admin's default applies. */
+  const [chosenMode, setChosenMode] = useState<UploadMode | null>(null);
   const [passcode, setPasscode] = useState("");
   const [passcodeRejected, setPasscodeRejected] = useState(false);
   // The upload queue and the human review of every finished read, behind one reducer.
@@ -88,17 +129,15 @@ export function TryPlayground() {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
 
   const { entries, paused } = queue;
-  /** Every character name read so far, offered while correcting one. */
-  const characters = useMemo(
-    () => [
-      ...new Set(
-        entries.flatMap((entry) => (entry.state === "done" && entry.body ? entry.body.result.characters : [])),
-      ),
-    ],
-    [entries],
-  );
+  /** Every character name read or typed so far, offered while entering one. */
+  const characters = useMemo(() => knownCharacters(entries, review), [entries, review]);
   const context: ReviewContext = { review, dispatch, characters };
-  const disabled = status !== null && !status.enabled;
+  // A failed status call reads as today's behaviour; the first POST then says what is wrong.
+  const modeStatus = modeStatusOf(status);
+  const canUseAi = aiAvailable(modeStatus);
+  const modes = availableModes(modeStatus);
+  const mode = resolveMode(modeStatus, chosenMode);
+  const modeNote = singleModeNote(modeStatus);
 
   // Ask the server whether a passcode is needed; reuse one from this tab's session.
   useEffect(() => {
@@ -107,13 +146,18 @@ export function TryPlayground() {
       .then((response) => response.json() as Promise<PlaygroundStatusBody>)
       .then((body) => {
         setStatus(body);
+        setChosenMode(readStoredMode());
+        setStatusSettled(true);
         if (!body.passcodeRequired) return;
         const stored = readStoredPasscode();
         if (stored !== "") setPasscode(stored);
         else dispatch({ type: "pause" }); // nothing is sent until a passcode is entered
       })
       .catch(() => {
+        if (controller.signal.aborted) return;
         // Unknown status: the first POST will say what is wrong.
+        setChosenMode(readStoredMode());
+        setStatusSettled(true);
       });
     return () => controller.abort();
   }, []);
@@ -198,8 +242,19 @@ export function TryPlayground() {
       // Back in line; the queue waits until a passcode is entered.
       storePasscode(null);
       setPasscodeRejected(code !== "");
-      setStatus((current) => ({ enabled: current?.enabled ?? true, passcodeRequired: true }));
+      setStatus((current) => ({ ...modeStatusOf(current), passcodeRequired: true }));
       dispatch({ type: "unauthorized", id: entry.id });
+    } else if (outcome.type === "ai_disabled") {
+      // An admin switched AI reading off under the batch: the page goes manual, and
+      // everything still waiting becomes a manual entry instead of failing one by one.
+      setStatus((current) => ({
+        ...modeStatusOf(current),
+        passcodeRequired: current?.passcodeRequired ?? false,
+        aiEnabled: false,
+      }));
+      for (const other of controllers.current.values()) other.abort();
+      controllers.current.clear();
+      dispatch({ type: "toManual", now: Date.now() });
     } else {
       dispatch({ type: "fail", id: entry.id, error: outcome.error, now: Date.now() });
     }
@@ -207,7 +262,8 @@ export function TryPlayground() {
 
   // The queue runner: after every change, start whatever the reducer's picker hands over.
   const pump = useEffectEvent(() => {
-    if (disabled) return;
+    // Never before the modes are known, and never while AI reading is off.
+    if (!statusSettled || !canUseAi) return;
     for (const entry of pickStartable(queue, QUEUE_CONCURRENCY)) {
       if (controllers.current.has(entry.id)) continue;
       void read(entry, passcode.trim());
@@ -216,7 +272,7 @@ export function TryPlayground() {
 
   useEffect(() => {
     pump();
-  }, [queue, disabled]);
+  }, [queue, statusSettled, canUseAi]);
 
   function abort(id: string) {
     controllers.current.get(id)?.abort();
@@ -224,9 +280,9 @@ export function TryPlayground() {
   }
 
   function addFiles(files: File[]) {
-    if (disabled || files.length === 0) return;
+    if (!statusSettled || files.length === 0) return;
     const plan = planBatch(
-      entries.map((entry) => entry.file),
+      imageEntries(entries).map((entry) => entry.file),
       files,
       MAX_BATCH_IMAGES,
     );
@@ -240,7 +296,31 @@ export function TryPlayground() {
       if (previewUrl) liveUrls.current.add(previewUrl);
       return { id: `shot-${nextId.current}`, file, previewUrl };
     });
-    dispatch({ type: "enqueue", items, now: Date.now() });
+    // The mode at the moment of the drop decides what these images become; entries already in the
+    // batch keep their kind.
+    const entryMode = resolveMode(modeStatusOf(status), chosenMode);
+    dispatch({ type: "enqueue", items, now: Date.now(), mode: entryMode });
+    // A manual image is there to be typed from: show it straight away.
+    if (entryMode === "manual") setPicked(items[0].id);
+  }
+
+  /** The one manual entry without a screenshot: make it, or go to it. */
+  function addBlankEntry() {
+    const existing = blankEntryId(entries);
+    if (existing) {
+      setPicked(existing);
+      return;
+    }
+    nextId.current += 1;
+    const id = `manual-${nextId.current}`;
+    dispatch({ type: "addBlank", item: { id, file: new File([], BLANK_ENTRY_NAME), previewUrl: null }, now: Date.now() });
+    setPicked(id);
+  }
+
+  function chooseMode(value: string) {
+    if (!isUploadMode(value)) return;
+    setChosenMode(value);
+    storeMode(value);
   }
 
   function clearAll() {
@@ -261,6 +341,10 @@ export function TryPlayground() {
     onRemove: (id) => {
       abort(id);
       dispatch({ type: "remove", id });
+    },
+    onManual: (id) => {
+      abort(id);
+      dispatch({ type: "toManual", id, now: Date.now() });
     },
   };
 
@@ -283,9 +367,12 @@ export function TryPlayground() {
   const selectedId = resolveSelection(entries, isDesktop && picked === null ? undefined : picked, isDesktop);
   const selected = entries.find((entry) => entry.id === selectedId) ?? null;
   const waiting = entries.filter((entry) => entry.state === "queued").length;
-  const full = entries.length >= MAX_BATCH_IMAGES;
+  const images = imageEntries(entries).length;
+  const full = images >= MAX_BATCH_IMAGES;
+  const dropDisabled = !statusSettled || full;
 
-  const passcodeForm = paused && !disabled && (
+  // Manual mode never calls the server, so it never asks for the passcode (unless reads are still waiting for one).
+  const passcodeForm = paused && canUseAi && (mode === "ai" || waiting > 0) && (
     <Card size="2">
       <form
         onSubmit={(event) => {
@@ -337,7 +424,7 @@ export function TryPlayground() {
       className={styles.dropzone}
       data-compact={hasEntries}
       data-drag-over={dragOver}
-      data-disabled={disabled || full}
+      data-disabled={dropDisabled}
     >
       <input
         ref={fileInputRef}
@@ -345,7 +432,7 @@ export function TryPlayground() {
         type="file"
         multiple
         accept={ACCEPTED_MEDIA_TYPES.join(",")}
-        disabled={disabled || full}
+        disabled={dropDisabled}
         onChange={(event) => {
           addFiles(Array.from(event.target.files ?? []));
           // So the same file can be chosen again after it was removed.
@@ -373,11 +460,45 @@ export function TryPlayground() {
             </Box>
           </Text>
           <Text size="2" color="gray">
-            PNG, JPEG or WebP · up to 10 MB each · up to {MAX_BATCH_IMAGES} at once · 10–20 seconds per image
+            PNG, JPEG or WebP · up to 10 MB each · up to {MAX_BATCH_IMAGES} at once ·{" "}
+            {mode === "manual" ? "kept in your browser to type the rows from" : "10–20 seconds per image"}
           </Text>
         </>
       )}
     </label>
+  );
+
+  const modeBar = (
+    // Holds its height while the status call is out, so nothing jumps when the control arrives.
+    <Flex align="center" gap="3" wrap="wrap" minHeight="32px">
+      {statusSettled && modes.length > 1 && (
+        <>
+          <SegmentedControl.Root size="2" value={mode} onValueChange={chooseMode} aria-label="How rows get in">
+            {modes.map((value) => (
+              <SegmentedControl.Item key={value} value={value}>
+                {MODE_LABEL[value]}
+              </SegmentedControl.Item>
+            ))}
+          </SegmentedControl.Root>
+          <Text size="2" color="gray" aria-live="polite">
+            {MODE_HINT[mode]}
+          </Text>
+        </>
+      )}
+      {statusSettled && modeNote && (
+        <Text size="2" color="gray" role="status">
+          {modeNote}
+        </Text>
+      )}
+    </Flex>
+  );
+
+  const blankButton = statusSettled && mode === "manual" && (
+    <Flex>
+      <Button size="1" variant="soft" color="gray" onClick={addBlankEntry}>
+        {blankEntryId(entries) ? "Go to the entry without a screenshot" : "Add rows without a screenshot"}
+      </Button>
+    </Flex>
   );
 
   const batchNotice = (notes.cap || notes.duplicates) && (
@@ -398,7 +519,9 @@ export function TryPlayground() {
   const batchBar = hasEntries && (
     <Flex align="center" justify="between" gap="3" wrap="wrap">
       <Heading as="h2" size="3">
-        {entries.length} {entries.length === 1 ? "screenshot" : "screenshots"}
+        {images === entries.length
+          ? `${images} ${images === 1 ? "screenshot" : "screenshots"}`
+          : `${entries.length} ${entries.length === 1 ? "entry" : "entries"}`}
       </Heading>
       <Flex gap="2" wrap="wrap">
         {hasRetryableFailures(queue) && (
@@ -431,19 +554,14 @@ export function TryPlayground() {
         addFiles(droppedFiles(event.dataTransfer));
       }}
     >
-      {disabled && (
-        <Callout.Root color="red">
-          <Callout.Text>
-            {errorText("disabled")} The server has no <code>TRY_PASSCODE</code> set.
-          </Callout.Text>
-        </Callout.Root>
-      )}
+      {modeBar}
 
       {passcodeForm}
 
       {!hasEntries && (
         <>
           {dropzone}
+          {blankButton}
           {batchNotice}
         </>
       )}
@@ -454,6 +572,7 @@ export function TryPlayground() {
         <Grid columns="232px minmax(0, 1fr)" gap="4" align="start">
           <Flex direction="column" gap="3" className={styles.rail}>
             {dropzone}
+            {blankButton}
             {batchNotice}
             {batchBar}
             <EntryRail
@@ -474,6 +593,7 @@ export function TryPlayground() {
       {hasEntries && !isDesktop && (
         <>
           {dropzone}
+          {blankButton}
           {batchNotice}
           {batchBar}
           <EntryCards

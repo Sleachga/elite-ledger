@@ -78,6 +78,13 @@ export interface ReviewRowsProps {
   /** Character names read from the batch, offered while typing one. */
   characters: readonly string[];
   animate: boolean;
+  /**
+   * A manual entry: every row is typed by hand. The add-row form is open from
+   * the start and stays open after each saved row (focus on the fresh form, the
+   * game time and character carried over), and the "Sure" column is left out:
+   * there is no model confidence to show.
+   */
+  manual?: boolean;
 }
 
 function itemName(itemId: string): string {
@@ -199,6 +206,8 @@ interface RowProps {
   animate: boolean;
   /** Back from "Removed": no stagger, no pulse. */
   restored: boolean;
+  /** A manual entry: no confidence to show. */
+  manual: boolean;
 }
 
 /** The handlers and flags both layouts share. */
@@ -261,7 +270,7 @@ function Cell({ children }: { children: ReactNode }) {
 
 /** Desktop: one dense table row. Collapses when deleted (the cells shrink, then the row leaves). */
 function TableRow(props: RowProps) {
-  const { row, screenshot, active, onActiveRow, onDelete, characters, animate } = props;
+  const { row, screenshot, active, onActiveRow, onDelete, characters, animate, manual } = props;
   const bits = useRow(props);
   const [isPresent, safeToRemove] = usePresence();
 
@@ -347,11 +356,13 @@ function TableRow(props: RowProps) {
           />
         </Cell>
       </Table.Cell>
-      <Table.Cell justify="end" className={styles.fitCell}>
-        <Cell>
-          <RowBadge row={row} />
-        </Cell>
-      </Table.Cell>
+      {!manual && (
+        <Table.Cell justify="end" className={styles.fitCell}>
+          <Cell>
+            <RowBadge row={row} />
+          </Cell>
+        </Table.Cell>
+      )}
       <Table.Cell className={styles.actionsCell}>
         <Cell>
           <IconButton
@@ -372,7 +383,7 @@ function TableRow(props: RowProps) {
 
 /** Phones: check on the left, item + quantity, tap the line below for the rest. */
 function CardRow(props: RowProps & { expanded: boolean; onExpand: (rowId: string) => void }) {
-  const { row, screenshot, active, onActiveRow, onDelete, characters, animate, expanded, onExpand } = props;
+  const { row, screenshot, active, onActiveRow, onDelete, characters, animate, manual, expanded, onExpand } = props;
   const bits = useRow(props);
   const detailsId = `row-details-${props.imageId}-${row.id}`;
 
@@ -460,7 +471,7 @@ function CardRow(props: RowProps & { expanded: boolean; onExpand: (rowId: string
           )}
           <Flex align="center" justify="between" gap="3">
             <Flex align="center" gap="2">
-              <RowBadge row={row} />
+              {!manual && <RowBadge row={row} />}
               {row.edited && (
                 <Badge color="gray" variant="surface" size="1">
                   Edited
@@ -478,17 +489,32 @@ function CardRow(props: RowProps & { expanded: boolean; onExpand: (rowId: string
   );
 }
 
-/** "Add row": item, quantity, game time, character (the last two start from the row above). */
+const ADD_ROW_ITEM_ID = "add-row-item";
+
+/**
+ * "Add row": item, quantity, game time, character (the last two start from the
+ * row above). Enter in any field submits; picking the item sends the focus on
+ * to the quantity.
+ */
 function AddRowForm({
   review,
   sheet,
   characters,
+  focusOnMount,
+  cancelLabel,
   onAdd,
   onCancel,
 }: {
   review: ImageReview;
   sheet: boolean;
   characters: readonly string[];
+  /**
+   * Put the focus on the item picker when the form appears: "quiet" without
+   * scrolling (a manual entry just opened), "follow" scrolling to it (the fresh
+   * form after a saved row, so the next row can be typed straight away).
+   */
+  focusOnMount: "quiet" | "follow" | null;
+  cancelLabel: string;
   onAdd: (values: { itemId: string; quantity: string; gameTimestamp: string; character: string }) => void;
   onCancel: () => void;
 }) {
@@ -497,8 +523,16 @@ function AddRowForm({
   const [quantity, setQuantity] = useState("");
   const [gameTimestamp, setGameTimestamp] = useState(defaults.gameTimestamp);
   const [character, setCharacter] = useState(defaults.character);
+  const quantityRef = useRef<HTMLInputElement | null>(null);
   const parsed = parseQuantityInput(quantity);
   const ready = itemId !== "" && parsed.ok;
+
+  useEffect(() => {
+    if (!focusOnMount) return;
+    document.getElementById(ADD_ROW_ITEM_ID)?.focus({ preventScroll: focusOnMount === "quiet" });
+    // Only when the form appears.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <Card size="1" asChild>
@@ -509,7 +543,8 @@ function AddRowForm({
           if (ready) onAdd({ itemId, quantity: parsed.digits, gameTimestamp, character });
         }}
         onKeyDown={(event) => {
-          if (event.key === "Escape") onCancel();
+          // Escape inside the item picker (a portal: outside the form's DOM) only closes the picker.
+          if (event.key === "Escape" && event.currentTarget.contains(event.target as Node)) onCancel();
         }}
       >
         <div className={styles.addForm}>
@@ -518,7 +553,14 @@ function AddRowForm({
               Item
             </Text>
             <span>
-              <ItemPicker value={itemId} label={itemId ? `Item: ${itemName(itemId)}` : "Item: none yet"} sheet={sheet} onSelect={setItemId}>
+              <ItemPicker
+                value={itemId}
+                label={itemId ? `Item: ${itemName(itemId)}` : "Item: none yet"}
+                sheet={sheet}
+                triggerId={ADD_ROW_ITEM_ID}
+                focusAfterPick={() => quantityRef.current?.focus()}
+                onSelect={setItemId}
+              >
                 {itemId ? (
                   <Chip itemId={itemId} />
                 ) : (
@@ -534,6 +576,7 @@ function AddRowForm({
               Quantity
             </Text>
             <TextField.Root
+              ref={quantityRef}
               id="add-row-quantity"
               size="2"
               inputMode="decimal"
@@ -579,7 +622,7 @@ function AddRowForm({
           </Flex>
           <Flex gap="2" justify="end" className={styles.addFormWide}>
             <Button type="button" size="2" variant="soft" color="gray" onClick={onCancel}>
-              Cancel
+              {cancelLabel}
             </Button>
             <Button type="submit" size="2" disabled={!ready}>
               Add row
@@ -661,6 +704,7 @@ export function ReviewRows({
   selection,
   characters,
   animate,
+  manual = false,
 }: ReviewRowsProps) {
   const wide = useMediaQuery(TABLE_QUERY);
   const container = useRef<HTMLDivElement | null>(null);
@@ -669,7 +713,10 @@ export function ReviewRows({
   const [seenNonce, setSeenNonce] = useState<number | null>(null);
   const [lastDeletedId, setLastDeletedId] = useState<string | null>(null);
   const [restoredIds, setRestoredIds] = useState<ReadonlySet<string>>(new Set());
-  const [adding, setAdding] = useState(false);
+  // A manual entry is for adding rows: its form is open from the start.
+  const [adding, setAdding] = useState(manual);
+  /** Rows saved through the form so far: a new number is a fresh form (manual entries keep it open). */
+  const [formRound, setFormRound] = useState(0);
 
   // A row picked on the screenshot opens its card (phones)...
   if (selection && selection.nonce !== seenNonce) {
@@ -712,14 +759,20 @@ export function ReviewRows({
     setRestoredIds((current) => new Set(current).add(rowId));
   }
 
-  const shared = { imageId, dispatch, screenshot, onActiveRow, onDelete, characters, animate };
+  const shared = { imageId, dispatch, screenshot, onActiveRow, onDelete, characters, animate, manual };
+  const emptyText =
+    removed.length > 0
+      ? "Every row was removed."
+      : manual
+        ? "No rows yet. Add the first one below."
+        : "No deposit rows were found in this screenshot.";
 
   return (
     <Flex direction="column" gap="3" ref={container} onKeyDown={onKeyDown}>
       {rows.length === 0 ? (
         <Card size="2">
           <Text size="2" color="gray">
-            {removed.length > 0 ? "Every row was removed." : "No deposit rows were found in this screenshot."}
+            {emptyText}
           </Text>
         </Card>
       ) : wide ? (
@@ -733,7 +786,7 @@ export function ReviewRows({
               <Table.ColumnHeaderCell justify="end">Qty</Table.ColumnHeaderCell>
               <Table.ColumnHeaderCell>Game time</Table.ColumnHeaderCell>
               <Table.ColumnHeaderCell>Character</Table.ColumnHeaderCell>
-              <Table.ColumnHeaderCell justify="end">Sure</Table.ColumnHeaderCell>
+              {!manual && <Table.ColumnHeaderCell justify="end">Sure</Table.ColumnHeaderCell>}
               <Table.ColumnHeaderCell className={styles.actionsCell}>
                 <VisuallyHidden>Actions</VisuallyHidden>
               </Table.ColumnHeaderCell>
@@ -779,13 +832,18 @@ export function ReviewRows({
 
       {adding ? (
         <AddRowForm
+          // A fresh form per saved row: item and quantity empty, game time and character from the row just added.
+          key={formRound}
           review={review}
           sheet={!wide}
           characters={characters}
+          focusOnMount={manual ? (formRound === 0 ? "quiet" : "follow") : null}
+          cancelLabel={manual ? "Done" : "Cancel"}
           onCancel={() => setAdding(false)}
           onAdd={(values) => {
             dispatch({ type: "addRow", imageId, values });
-            setAdding(false);
+            if (manual) setFormRound((round) => round + 1);
+            else setAdding(false);
           }}
         />
       ) : (

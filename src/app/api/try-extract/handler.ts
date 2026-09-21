@@ -7,12 +7,16 @@
  *  - `TRY_PASSCODE` set: the `x-try-passcode` header must match;
  *  - `TRY_PASSCODE` unset on Vercel: the playground is off (503);
  *  - `TRY_PASSCODE` unset locally: open.
+ * On top of that an admin can switch AI reading off (the `aiExtractionEnabled`
+ * setting): every POST is then refused with 403 `ai_disabled` before the rate
+ * limiter or the extractor is touched, so no credits can be spent.
  *
  * Nothing is stored: the image goes to `extract()` and the rows go back.
  */
-import { createHash, timingSafeEqual } from "node:crypto";
 import { ExtractorError, extract, type ExtractorErrorKind } from "@/modules/extractor";
 import { createRateLimiter } from "@/lib/rate-limit";
+import { clientKey, envPasscode, jsonNoStore as json, passcodeMatches } from "@/lib/request-gate";
+import { getSettings } from "@/modules/settings";
 import {
   IMAGE_FIELD,
   MAX_IMAGE_BYTES,
@@ -50,10 +54,6 @@ const EXTRACTOR_STATUS: Record<ExtractorErrorKind, number> = {
   network: 504,
 };
 
-function json(body: unknown, status: number, headers: Record<string, string> = {}): Response {
-  return Response.json(body, { status, headers: { "Cache-Control": "no-store", ...headers } });
-}
-
 function fail(
   status: number,
   kind: PlaygroundErrorKind,
@@ -65,36 +65,36 @@ function fail(
 }
 
 function configuredPasscode(): string | undefined {
-  const value = process.env.TRY_PASSCODE?.trim();
-  return value ? value : undefined;
+  return envPasscode("TRY_PASSCODE");
 }
 
-function gate(): PlaygroundStatusBody {
+function gate(): Pick<PlaygroundStatusBody, "passcodeRequired" | "enabled"> {
   const passcodeRequired = configuredPasscode() !== undefined;
   // Deployed without a passcode: never run unauthenticated in production.
   const enabled = passcodeRequired || !process.env.VERCEL;
   return { passcodeRequired, enabled };
 }
 
-/** Constant-time: both sides are hashed first, so length does not leak either. */
-function passcodeMatches(given: string, expected: string): boolean {
-  const digest = (value: string) => createHash("sha256").update(value, "utf8").digest();
-  return timingSafeEqual(digest(given), digest(expected));
-}
-
-function clientKey(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwarded || request.headers.get("x-real-ip")?.trim() || "unknown";
-}
-
-export function handleGet(): Response {
-  return json(gate(), 200);
+/** What the page needs before it sends anything: the gate, and the admin's upload-mode settings. */
+export async function handleGet(): Promise<Response> {
+  const settings = await getSettings();
+  const body: PlaygroundStatusBody = {
+    ...gate(),
+    aiEnabled: settings.aiExtractionEnabled,
+    defaultMode: settings.defaultUploadMode,
+  };
+  return json(body, 200);
 }
 
 export async function handlePost(request: Request): Promise<Response> {
   const { enabled } = gate();
   if (!enabled) {
     return fail(503, "disabled", "Playground disabled: TRY_PASSCODE is not set on this deployment.");
+  }
+
+  // The admin switch comes before everything that costs anything: no rate-limit slot, no extractor.
+  if (!(await getSettings()).aiExtractionEnabled) {
+    return fail(403, "ai_disabled", "AI reading of screenshots is switched off by an admin. Add rows by hand.");
   }
 
   // Before the passcode check, so guessing passcodes is limited too.

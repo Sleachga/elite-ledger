@@ -128,6 +128,10 @@ export function TrySummary({ entries, review }: { entries: readonly QueueEntry[]
     images.map((image) => (image.looksLikeBankLog ? review[image.imageId] : undefined)),
   );
 
+  // A batch typed entirely by hand has nothing to read: no read progress, warnings or read time to show.
+  const manualOnly = summary.total > 0 && summary.ready === summary.total;
+  const finished = summary.done + summary.ready;
+
   const pending = [
     summary.reading > 0 ? `${summary.reading} reading` : null,
     summary.queued > 0 ? `${summary.queued} queued` : null,
@@ -138,9 +142,9 @@ export function TrySummary({ entries, review }: { entries: readonly QueueEntry[]
   return (
     <Flex direction="column" gap="3" asChild>
       <section aria-label="Batch summary">
-        <Grid columns={{ initial: "2", sm: "3", md: "5" }} gap="3">
+        <Grid columns={manualOnly ? { initial: "2", sm: "3" } : { initial: "2", sm: "3", md: "5" }} gap="3">
           <Stat
-            label="Images read"
+            label={manualOnly ? "Manual entries" : summary.ready > 0 ? "Images ready" : "Images read"}
             wide
             hint={
               <>
@@ -150,12 +154,12 @@ export function TrySummary({ entries, review }: { entries: readonly QueueEntry[]
                   aria-label="Images finished"
                 />
                 <Text size="1" color="gray" aria-live="polite">
-                  {pending.length > 0 ? pending.join(" · ") : "All finished"}
+                  {manualOnly ? "Rows added by hand" : pending.length > 0 ? pending.join(" · ") : "All finished"}
                 </Text>
               </>
             }
           >
-            <CountUp value={summary.done} />
+            <CountUp value={finished} />
             <Text size="3" color="gray" weight="regular">
               {" "}
               / {summary.total}
@@ -175,16 +179,20 @@ export function TrySummary({ entries, review }: { entries: readonly QueueEntry[]
               </span>
             </Stat>
           )}
-          <Stat label="Warnings" color={summary.warnings > 0 ? "amber" : undefined}>
-            <CountUp value={summary.warnings} />
-          </Stat>
-          <Stat label="Read time">
-            <CountUp value={summary.durationMs / 1000} decimals={1} />
-            <Text size="3" color="gray" weight="regular">
-              {" "}
-              s
-            </Text>
-          </Stat>
+          {!manualOnly && (
+            <>
+              <Stat label="Warnings" color={summary.warnings > 0 ? "amber" : undefined}>
+                <CountUp value={summary.warnings} />
+              </Stat>
+              <Stat label="Read time">
+                <CountUp value={summary.durationMs / 1000} decimals={1} />
+                <Text size="3" color="gray" weight="regular">
+                  {" "}
+                  s
+                </Text>
+              </Stat>
+            </>
+          )}
         </Grid>
 
         <Card size="1">
@@ -198,7 +206,7 @@ export function TrySummary({ entries, review }: { entries: readonly QueueEntry[]
               </Flex>
               {totals.length === 0 ? (
                 <Text size="2" color="gray">
-                  Totals appear here as screenshots finish.
+                  {manualOnly ? "Totals appear here as you add rows." : "Totals appear here as screenshots finish."}
                 </Text>
               ) : (
                 <Grid columns={{ initial: "1", sm: "2", md: "3" }} gapX="6" gapY="2">
