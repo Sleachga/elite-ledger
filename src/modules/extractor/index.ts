@@ -14,9 +14,11 @@ import { ExtractorError, toExtractorError } from "./errors";
 import { normalizeOutput, type ParsedRow } from "./normalize";
 import { SYSTEM_PROMPT, buildUserContent, defaultIconsDir, type ImageMediaType } from "./prompt";
 import { buildOutputFormat, modelOutputSchema, type ModelOutput } from "./schema";
+import { DEFAULT_UPSCALE_LIMITS, prepareScreenshot, type UpscaleReport } from "./upscale";
 
 export { ExtractorError, type ExtractorErrorKind } from "./errors";
-export type { ParsedRow } from "./normalize";
+export type { ParsedRow, RowBox } from "./normalize";
+export type { UpscaleReport } from "./upscale";
 export type { ImageMediaType } from "./prompt";
 
 export const DEFAULT_MODEL = "claude-opus-5";
@@ -67,6 +69,17 @@ export interface ExtractDeps {
    * and off for any other model.
    */
   fallbacks?: boolean;
+  /**
+   * Enlarge small screenshots (Lanczos, up to 2x) before sending them, so log
+   * icons and inline amounts get more pixels. Defaults to env
+   * `EXTRACTOR_UPSCALE` ("on" / "off"), then to on.
+   */
+  upscale?: boolean;
+  /**
+   * Longest edge, in px, of the enlarged image. Defaults to env
+   * `EXTRACTOR_UPSCALE_MAX_EDGE`, then to 1568 (see `upscale.ts`).
+   */
+  upscaleMaxEdge?: number;
 }
 
 export interface ExtractionUsage {
@@ -86,6 +99,8 @@ export interface ExtractionResult {
   /** The model that produced the answer (differs from the request if a fallback served it). */
   model: string;
   usage: ExtractionUsage;
+  /** Whether the screenshot was enlarged before it was sent, and if not, why. Always set by `extract()`. */
+  upscale?: UpscaleReport;
 }
 
 function envValue(name: string): string | undefined {
@@ -111,6 +126,30 @@ function resolveFallbacks(explicit: boolean | undefined, model: string): boolean
   if (value === undefined) return model === DEFAULT_MODEL;
   if (value === "on" || value === "off") return value === "on";
   throw new ExtractorError("config", `EXTRACTOR_FALLBACKS must be "on" or "off" (got "${value}").`);
+}
+
+function resolveUpscale(explicit: boolean | undefined): boolean {
+  if (explicit !== undefined) return explicit;
+  const value = envValue("EXTRACTOR_UPSCALE")?.toLowerCase();
+  if (value === undefined) return true;
+  if (value === "on" || value === "off") return value === "on";
+  throw new ExtractorError("config", `EXTRACTOR_UPSCALE must be "on" or "off" (got "${value}").`);
+}
+
+/** The API refuses images above 8000px a side, so nothing larger is a usable target. */
+const MAX_EDGE_RANGE = { min: 256, max: 8000 } as const;
+
+function resolveUpscaleMaxEdge(explicit: number | undefined): number {
+  const raw = explicit ?? envValue("EXTRACTOR_UPSCALE_MAX_EDGE");
+  if (raw === undefined) return DEFAULT_UPSCALE_LIMITS.maxLongEdge;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < MAX_EDGE_RANGE.min || value > MAX_EDGE_RANGE.max) {
+    throw new ExtractorError(
+      "config",
+      `EXTRACTOR_UPSCALE_MAX_EDGE must be a whole number of pixels between ${MAX_EDGE_RANGE.min} and ${MAX_EDGE_RANGE.max} (got "${raw}").`,
+    );
+  }
+  return value;
 }
 
 let defaultClient: Anthropic | undefined;
@@ -192,11 +231,20 @@ export async function extract(
     const model = deps.model ?? envValue("EXTRACTOR_MODEL") ?? DEFAULT_MODEL;
     const effort = resolveEffort(deps.effort);
     const fallbacks = resolveFallbacks(deps.fallbacks, model);
+    const upscale = resolveUpscale(deps.upscale);
+    const maxLongEdge = resolveUpscaleMaxEdge(deps.upscaleMaxEdge);
+
+    // Row boxes come back as fractions of the image height, so they fit the
+    // upload whether or not an enlarged copy is what the model saw.
+    const screenshot = await prepareScreenshot(input.image, input.mediaType, {
+      enabled: upscale,
+      limits: { ...DEFAULT_UPSCALE_LIMITS, maxLongEdge },
+    });
 
     const content = await buildUserContent({
       catalog,
       iconsDir: deps.iconsDir ?? defaultIconsDir(),
-      screenshot: { data: input.image, mediaType: input.mediaType },
+      screenshot: { data: screenshot.data, mediaType: screenshot.mediaType },
       knownCharacters: input.knownCharacters ?? [],
     });
     const itemIds = catalog.map((item) => item.id);
@@ -219,7 +267,7 @@ export async function extract(
     const client = deps.client ?? getDefaultClient();
     const message = await client.beta.messages.create(params);
 
-    const normalized = normalizeOutput(readModelOutput(message), itemIds);
+    const normalized = normalizeOutput(readModelOutput(message), catalog);
     if (servedByFallback(message)) {
       normalized.warnings.push(
         `${model} declined this request; the answer came from the fallback model ${message.model}.`,
@@ -235,6 +283,7 @@ export async function extract(
         cacheCreationInputTokens: message.usage.cache_creation_input_tokens ?? 0,
         cacheReadInputTokens: message.usage.cache_read_input_tokens ?? 0,
       },
+      upscale: screenshot.upscale,
     };
   } catch (error) {
     throw toExtractorError(error);

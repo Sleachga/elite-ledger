@@ -21,7 +21,13 @@ import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { catalog as vendoredCatalog, type CatalogItem } from "@/catalog";
-import { ExtractorError, extract, type ExtractDeps, type ImageMediaType } from "./index";
+import {
+  ExtractorError,
+  extract,
+  type ExtractDeps,
+  type ImageMediaType,
+  type UpscaleReport,
+} from "./index";
 import { fakeClient, fakeMessage } from "./testing";
 
 const boxSchema = z.object({ top: z.number(), bottom: z.number() });
@@ -81,6 +87,8 @@ export interface FixtureResult {
   /** Set when `extract()` threw; every expected row then counts as missing. */
   error?: { kind: string; message: string };
   model?: string;
+  /** What was done to the screenshot before it was sent. */
+  upscale?: UpscaleReport;
   usage?: {
     inputTokens: number;
     outputTokens: number;
@@ -315,6 +323,7 @@ async function runFixture(dir: string, name: string, options: EvalOptions): Prom
       extraRows: score.extraRows,
       warnings: result.warnings,
       model: result.model,
+      upscale: result.upscale,
       usage: result.usage,
     };
   } catch (error) {
