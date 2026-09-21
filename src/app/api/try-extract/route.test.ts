@@ -1,0 +1,252 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// The extractor is mocked: no Anthropic client is ever built and no request is made.
+vi.mock("@/modules/extractor", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/modules/extractor")>()),
+  extract: vi.fn(),
+}));
+
+import { ExtractorError, extract, type ExtractionResult } from "@/modules/extractor";
+import { MAX_IMAGE_BYTES } from "@/modules/playground";
+import { RATE_LIMIT, resetRateLimit } from "./handler";
+import { GET, POST } from "./route";
+
+const extractMock = vi.mocked(extract);
+
+const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
+
+const RESULT: ExtractionResult = {
+  looksLikeBankLog: true,
+  rows: [
+    {
+      itemId: "silver-coin",
+      iconDescription: "A bag of coins.",
+      quantity: "10000000000",
+      gameTimestamp: "06.09.2026 - 23:21",
+      character: "Leftaltar",
+      direction: "deposit",
+      confidence: 0.97,
+    },
+  ],
+  characters: ["Leftaltar"],
+  warnings: [],
+  model: "claude-opus-5",
+  usage: { inputTokens: 1200, outputTokens: 300, cacheCreationInputTokens: 0, cacheReadInputTokens: 900 },
+};
+
+interface PostOptions {
+  bytes?: Uint8Array;
+  type?: string;
+  field?: string;
+  passcode?: string;
+  ip?: string;
+  headers?: Record<string, string>;
+}
+
+function post(options: PostOptions = {}): Promise<Response> {
+  const { bytes = PNG_BYTES, type = "image/png", field = "image", passcode, ip, headers = {} } = options;
+  const form = new FormData();
+  form.append(field, new File([bytes as BlobPart], "screenshot", { type }));
+  const allHeaders: Record<string, string> = { ...headers };
+  if (passcode !== undefined) allHeaders["x-try-passcode"] = passcode;
+  if (ip !== undefined) allHeaders["x-forwarded-for"] = ip;
+  return POST(
+    new Request("http://localhost/api/try-extract", { method: "POST", body: form, headers: allHeaders }),
+  );
+}
+
+async function errorOf(response: Response): Promise<{ kind: string; message: string }> {
+  const body = (await response.json()) as { error: { kind: string; message: string } };
+  return body.error;
+}
+
+beforeEach(() => {
+  vi.stubEnv("TRY_PASSCODE", "");
+  vi.stubEnv("VERCEL", "");
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  extractMock.mockReset();
+  extractMock.mockResolvedValue(RESULT);
+  resetRateLimit();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
+
+describe("GET /api/try-extract", () => {
+  it("is open locally when no passcode is set", async () => {
+    const response = GET();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ passcodeRequired: false, enabled: true });
+  });
+
+  it("asks for a passcode when TRY_PASSCODE is set", async () => {
+    vi.stubEnv("TRY_PASSCODE", "open-sesame");
+    vi.stubEnv("VERCEL", "1");
+    expect(await GET().json()).toEqual({ passcodeRequired: true, enabled: true });
+  });
+
+  it("reports disabled on Vercel without a passcode", async () => {
+    vi.stubEnv("VERCEL", "1");
+    expect(await GET().json()).toEqual({ passcodeRequired: false, enabled: false });
+  });
+});
+
+describe("POST /api/try-extract", () => {
+  it("runs the extractor and returns the result with a duration", async () => {
+    const response = await post();
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { result: ExtractionResult; durationMs: number };
+    expect(body.result).toEqual(RESULT);
+    expect(body.durationMs).toBeGreaterThanOrEqual(0);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+
+    expect(extractMock).toHaveBeenCalledTimes(1);
+    const [input] = extractMock.mock.calls[0];
+    expect(input.mediaType).toBe("image/png");
+    expect([...input.image]).toEqual([...PNG_BYTES]);
+  });
+
+  it("passes the media type found in the bytes, not the declared one", async () => {
+    const response = await post({ bytes: JPEG_BYTES, type: "image/png" });
+    expect(response.status).toBe(200);
+    expect(extractMock.mock.calls[0][0].mediaType).toBe("image/jpeg");
+  });
+
+  it("rejects a wrong MIME type with 400", async () => {
+    const response = await post({ type: "image/gif" });
+    expect(response.status).toBe(400);
+    expect((await errorOf(response)).kind).toBe("bad_request");
+    expect(extractMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects bytes that are not an image with 400", async () => {
+    const response = await post({ bytes: new TextEncoder().encode("not an image"), type: "image/png" });
+    expect(response.status).toBe(400);
+    expect((await errorOf(response)).kind).toBe("bad_request");
+    expect(extractMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing image field and a non-multipart body with 400", async () => {
+    expect((await post({ field: "file" })).status).toBe(400);
+
+    const response = await POST(
+      new Request("http://localhost/api/try-extract", {
+        method: "POST",
+        body: JSON.stringify({ image: "nope" }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(extractMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an image over 10 MB with 413", async () => {
+    const bytes = new Uint8Array(MAX_IMAGE_BYTES + 1);
+    bytes.set(PNG_BYTES);
+    const response = await post({ bytes });
+    expect(response.status).toBe(413);
+    expect((await errorOf(response)).kind).toBe("too_large");
+    expect(extractMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts an image of exactly 10 MB", async () => {
+    const bytes = new Uint8Array(MAX_IMAGE_BYTES);
+    bytes.set(PNG_BYTES);
+    expect((await post({ bytes })).status).toBe(200);
+  });
+
+  describe("passcode gate", () => {
+    beforeEach(() => {
+      vi.stubEnv("TRY_PASSCODE", "open-sesame");
+    });
+
+    it("401 when the header is missing", async () => {
+      const response = await post();
+      expect(response.status).toBe(401);
+      expect((await errorOf(response)).kind).toBe("unauthorized");
+      expect(extractMock).not.toHaveBeenCalled();
+    });
+
+    it("401 when the passcode is wrong", async () => {
+      for (const passcode of ["open-sesam", "open-sesame!", "OPEN-SESAME", "x"]) {
+        const response = await post({ passcode });
+        expect(response.status).toBe(401);
+      }
+      expect(extractMock).not.toHaveBeenCalled();
+    });
+
+    it("200 when the passcode matches, on Vercel too", async () => {
+      vi.stubEnv("VERCEL", "1");
+      const response = await post({ passcode: "open-sesame" });
+      expect(response.status).toBe(200);
+      expect(extractMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("503 on Vercel when no passcode is configured, even if one is sent", async () => {
+    vi.stubEnv("VERCEL", "1");
+    const response = await post({ passcode: "anything" });
+    expect(response.status).toBe(503);
+    expect((await errorOf(response)).kind).toBe("disabled");
+    expect(extractMock).not.toHaveBeenCalled();
+  });
+
+  it("limits requests per IP with 429 and Retry-After", async () => {
+    for (let index = 0; index < RATE_LIMIT.limit; index += 1) {
+      expect((await post({ ip: "203.0.113.7" })).status).toBe(200);
+    }
+    const limited = await post({ ip: "203.0.113.7, 10.0.0.1" });
+    expect(limited.status).toBe(429);
+    expect((await errorOf(limited)).kind).toBe("too_many_requests");
+    expect(Number(limited.headers.get("retry-after"))).toBeGreaterThan(0);
+
+    // Another client is unaffected.
+    expect((await post({ ip: "203.0.113.8" })).status).toBe(200);
+    expect(extractMock).toHaveBeenCalledTimes(RATE_LIMIT.limit + 1);
+  });
+
+  it("counts wrong passcodes against the limit", async () => {
+    vi.stubEnv("TRY_PASSCODE", "open-sesame");
+    for (let index = 0; index < RATE_LIMIT.limit; index += 1) {
+      expect((await post({ ip: "203.0.113.9", passcode: "guess" })).status).toBe(401);
+    }
+    expect((await post({ ip: "203.0.113.9", passcode: "open-sesame" })).status).toBe(429);
+  });
+
+  describe("ExtractorError mapping", () => {
+    const cases = [
+      ["config", 500],
+      ["rate_limit", 429],
+      ["refusal", 422],
+      ["invalid_output", 502],
+      ["api", 502],
+      ["network", 504],
+    ] as const;
+
+    it.each(cases)("%s -> %i", async (kind, status) => {
+      extractMock.mockRejectedValueOnce(new ExtractorError(kind, `boom: ${kind}`));
+      const response = await post();
+      expect(response.status).toBe(status);
+      expect(await errorOf(response)).toEqual({ kind, message: `boom: ${kind}` });
+    });
+
+    it("forwards retry-after from an API rate limit", async () => {
+      extractMock.mockRejectedValueOnce(
+        new ExtractorError("rate_limit", "slow down", { status: 429, retryAfterSeconds: 12.2 }),
+      );
+      const response = await post();
+      expect(response.status).toBe(429);
+      expect(response.headers.get("retry-after")).toBe("13");
+    });
+
+    it("turns an unexpected throw into a 500 without leaking it", async () => {
+      extractMock.mockRejectedValueOnce(new Error("secret detail"));
+      const response = await post();
+      expect(response.status).toBe(500);
+      expect((await errorOf(response)).message).not.toContain("secret detail");
+    });
+  });
+});
