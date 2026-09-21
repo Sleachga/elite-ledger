@@ -19,7 +19,8 @@ body {
   box-sizing: border-box;
 }
 
-.radix-themes {
+/* The page's theme root only: popovers and dialogs are portaled `.radix-themes` elements too. */
+.radix-themes[data-is-root-theme="true"] {
   min-height: 100dvh;
 }
 
