@@ -25,7 +25,7 @@ only to point at a real Postgres (`DATABASE_URL`), set the guild name
 | `pnpm dev:webpack` / `build:webpack` | Same, with webpack — needed on FAT32 checkouts (see below) |
 | `pnpm lint`         | ESLint (`eslint-config-next`)                                       |
 | `pnpm typecheck`    | `tsc --noEmit`                                                      |
-| `pnpm test`         | Vitest (progress, extractor with a fake client, playground route with the extractor mocked, in-memory PGlite migrate/seed) |
+| `pnpm test`         | Vitest (progress, extractor with a fake client, playground and admin routes with the extractor mocked, settings + migrate/seed on in-memory PGlite) |
 | `pnpm db:generate`  | `drizzle-kit generate`: write a new SQL migration from `src/db/schema.ts` into `drizzle/` |
 | `pnpm db:migrate`   | Apply committed migrations to the configured database               |
 | `pnpm db:seed`      | Migrate, then upsert the catalog and recipes (idempotent)           |
@@ -266,7 +266,8 @@ calls `extract()` and returns `{ result, durationMs }` or
 - **Rate limit.** 60 requests per 10 minutes per IP (room for a few 20-image
   batches plus retries), in memory, best effort. A 429 carries `Retry-After`,
   and the page shows the wait on the failed image.
-- `GET /api/try-extract` returns `{ passcodeRequired, enabled }`.
+- `GET /api/try-extract` returns `{ passcodeRequired, enabled, aiEnabled, defaultMode }`
+  (the last two are the admin settings below).
 
 Run it locally with the secrets from 1Password:
 
@@ -280,16 +281,78 @@ On Vercel the reference icons reach the function through
 4.5 MB, below the route's own 10 MB limit; the page warns on any image over
 4.5 MB. Crop very large screenshots.
 
+## Upload modes & admin settings
+
+`/try` offers two ways to get rows in, picked with a segmented control on top
+of the page (issue #22):
+
+- **AI-assisted** — the flow described above: each screenshot goes to the
+  Extractor and the member checks and corrects the rows.
+- **Manual** — screenshots are added the same way (drop / pick / paste, same
+  batch rules) but **nothing is sent to the server**: each image becomes an
+  entry that is ready at once with no rows, and the member adds them with the
+  same item picker and quantity editor (`500m`, `1.5b`). "Add rows without a
+  screenshot" makes one entry named "Manual entry". The add-row form stays
+  open: picking the item moves the focus to the quantity, Enter saves, and a
+  fresh form takes the focus with the same game time and character. Rows typed
+  by hand start checked. Totals, per-character counts, Copy rows and Download
+  fixture read them like any corrected row. No passcode is asked for.
+
+The member's choice is remembered per browser (`localStorage`); switching mode
+mid-batch only affects images added afterwards. A read that failed (or was
+canceled) can be handed over with "Add rows by hand". The model is in
+`src/modules/playground/`: `mode.ts` (which modes are on offer, which one is
+active) and a `manual` entry kind in `queue.ts` (`enqueue` with `mode`,
+`addBlank`, `toManual`; `pickStartable` never returns a manual entry).
+
+Which modes exist, and the default, are **admin settings** in the database:
+
+| Setting               | Default | Effect |
+| --------------------- | ------- | ------ |
+| `aiExtractionEnabled` | `true`  | Off: the control is hidden with a one-line note, `POST /api/try-extract` answers **403 `ai_disabled`** before the rate limiter or the Extractor is touched, and the page never calls it. No API credits can be spent. |
+| `defaultUploadMode`   | `"ai"`  | The mode a member starts in until they pick one (`"manual"` or `"ai"`). |
+
+They live in the `settings` table (`key` → `jsonb` value, `updated_at`,
+`updated_by`; migration `drizzle/0001_common_northstar.sql`) behind
+`src/modules/settings/`: `getSettings()` fills in defaults for missing or
+malformed rows and never throws (a bad value, or an unreachable database, is
+logged once and reads as the default, so AI stays on); `updateSettings(patch,
+{ updatedBy })` upserts known keys only. Reads are cached in-process for 15 s
+and a save drops the cache, so the upload screen follows a change within
+seconds, without a redeploy (each serverless instance has its own cache, hence
+"within 15 s" rather than "at once"). If a read is already in flight when AI is
+switched off, the 403 flips the page to Manual and the waiting images become
+manual entries.
+
+**Admin → Settings** (`/admin/settings`, listed on `/admin`; linked from the
+right of the desktop top bar and from the mobile More page) edits both, asks
+for "Your name" (stored in `updated_by`) and shows who changed them last.
+Until Discord login (#4) exists the admin area has its own passcode:
+
+- `GET` / `PUT /api/admin/settings` need the `x-admin-passcode` header to match
+  **`ADMIN_PASSCODE`** (constant-time compare; separate from `TRY_PASSCODE`) →
+  401 otherwise. On Vercel with no `ADMIN_PASSCODE` they answer 503 "admin
+  disabled"; locally with none set they are open. The page keeps the passcode in
+  `sessionStorage`.
+- 30 requests per 10 minutes per IP, counted before the passcode check.
+- `PUT` takes `{ patch: { aiExtractionEnabled?, defaultUploadMode? }, updatedBy }`
+  and rejects unknown keys and wrong types with 400.
+
+Run `pnpm db:migrate` (or `db:seed`) once so the table exists; set
+`ADMIN_PASSCODE` in the Vercel project's environment variables. Once #4 lands
+this moves behind the admin allowlist and every change goes through Audit (#11).
+
 ## Layout
 
 - `src/catalog/` vendored catalog + recipes (pure data)
 - `src/db/` Drizzle schema, driver switch, queries, seed
+- `src/modules/settings/` admin settings: typed get/update over the `settings` table, defaults, 15 s cache
 - `src/modules/progress/` pure `computeProgress()` with tests
 - `src/modules/extractor/` `extract()`: screenshot to deposit rows via the Claude API, plus the eval
 - `src/modules/playground/` pure logic for `/try` (upload queue, human-review reducer, quantity parser, TSV / fixture export, totals)
 - `fixtures/extractor/` eval fixtures (screenshot + expected rows)
 - `src/components/` Radix Themes UI (`ItemChip`, shell, progress bars)
-- `src/app/` Next.js App Router pages (`/` is Progress, `/try` the playground, `api/try-extract` its route; other routes are placeholders)
+- `src/app/` Next.js App Router pages (`/` is Progress, `/try` the playground, `api/try-extract` its route, `/admin` + `api/admin/settings` the admin settings; other routes are placeholders)
 - `drizzle/` generated SQL migrations (committed)
 - `scripts/` `tsx` entry points for migrate / seed / extractor eval / fixture drawing
 

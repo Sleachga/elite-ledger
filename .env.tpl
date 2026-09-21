@@ -3,3 +3,4 @@
 #   Write a local .env:           op inject -i .env.tpl -o .env
 ANTHROPIC_API_KEY="op://Private/elite ledger anthropic api key/credential"
 TRY_PASSCODE="op://Private/elite-ledger try passcode/password"
+ADMIN_PASSCODE="op://Private/elite-ledger admin passcode/password"
