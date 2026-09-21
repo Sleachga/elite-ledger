@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_IMAGE_BYTES,
+  compactTimestamp,
   confidenceLevel,
   errorText,
   formatConfidence,
@@ -29,6 +30,20 @@ describe("formatQuantity", () => {
     expect(formatQuantity("")).toBe("");
     expect(formatQuantity("12a")).toBe("12a");
     expect(formatQuantity("-5")).toBe("-5");
+  });
+});
+
+describe("compactTimestamp", () => {
+  it("drops the year of a timestamp in the game's form", () => {
+    expect(compactTimestamp("07.09.2026 - 18:02")).toBe("07.09 · 18:02");
+    expect(compactTimestamp(" 31.12.2026 - 23:59 ")).toBe("31.12 · 23:59");
+  });
+
+  it("leaves anything else as it is", () => {
+    expect(compactTimestamp("")).toBe("");
+    expect(compactTimestamp("yesterday")).toBe("yesterday");
+    expect(compactTimestamp("07.09.2026 18:02")).toBe("07.09.2026 18:02");
+    expect(compactTimestamp("2026-09-07 18:02")).toBe("2026-09-07 18:02");
   });
 });
 

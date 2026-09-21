@@ -73,6 +73,16 @@ export function formatQuantity(digits: string): string {
   return /^\d+$/.test(digits) ? formatQty(BigInt(digits)) : digits;
 }
 
+/**
+ * "07.09.2026 - 18:02" -> "07.09 · 18:02" for dense rows: the year is on the
+ * screenshot and in the full value (tooltip, editor). Anything that is not in
+ * the game's usual form comes back unchanged.
+ */
+export function compactTimestamp(gameTimestamp: string): string {
+  const match = /^(\d{2}\.\d{2})\.\d{4} - (\d{2}:\d{2})$/.exec(gameTimestamp.trim());
+  return match ? `${match[1]} · ${match[2]}` : gameTimestamp;
+}
+
 export interface ItemTotal {
   itemId: string;
   total: bigint;
