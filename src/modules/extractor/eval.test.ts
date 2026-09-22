@@ -1,5 +1,8 @@
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { runEval, scoreRows, type ExpectedRow } from "./eval";
+import { isRealFixture, runEval, scoreRows, type ExpectedRow } from "./eval";
 
 const row = (itemId: string, quantity: string, character = "Leftaltar"): ExpectedRow => ({
   itemId,
@@ -60,6 +63,31 @@ describe("scoreRows", () => {
     expect(score.silverQuantity).toEqual({ correct: 0, total: 1 });
   });
 
+  it("scores decoy rows as rejected only when they came back unknown", () => {
+    const expected = [
+      { ...row("unknown", "300"), decoy: "bright-veltryn" },
+      { ...row("unknown", "120"), decoy: "faded-veltryn" },
+      row("gold-ingot", "112"),
+    ];
+
+    const rejected = scoreRows(expected, [row("unknown", "300"), row("unknown", "120"), row("gold-ingot", "112")]);
+    expect(rejected.decoys).toEqual({ correct: 2, total: 2 });
+    expect(rejected.matched).toBe(3);
+
+    // Taken for the tracked lookalike: not rejected, and a wrong row.
+    const fooled = scoreRows(expected, [
+      row("purified-veltryn", "300"),
+      row("unknown", "120"),
+      row("gold-ingot", "112"),
+    ]);
+    expect(fooled.decoys).toEqual({ correct: 1, total: 2 });
+    expect(fooled.matched).toBe(2);
+
+    // A missing decoy row is not a rejection either; no decoys means n/a.
+    expect(scoreRows(expected, [row("gold-ingot", "112")]).decoys).toEqual({ correct: 0, total: 2 });
+    expect(scoreRows([row("gold-ingot", "112")], []).decoys).toEqual({ correct: 0, total: 0 });
+  });
+
   it("checks boxes only where the fixture has them, pairing identical rows by position", () => {
     const at = (top: number, bottom: number) => ({ ...row("nyxium", "1"), box: { top, bottom } });
     const expected = [at(0.1, 0.2), at(0.2, 0.3), row("gold-ingot", "112")];
@@ -94,5 +122,62 @@ describe("runEval --mock over the shipped fixtures", () => {
     // The withdrawal in this fixture is dropped by the extractor, not by the mock.
     expect(byName["synthetic-silver-and-withdraw"].warnings.join("\n")).toMatch(/Dropped 1/);
     expect(byName["synthetic-not-a-bank-log"].looksLikeBankLog.actual).toBe(false);
+    // The decoy fixture's canned answer says "unknown" for every lookalike.
+    expect(byName["synthetic-rarity-decoys"].decoys).toEqual({ correct: 4, total: 4 });
+    // What the model said per row travels with the report, with a tally of the border colours.
+    expect(byName["synthetic-rarity-decoys"].rows).toHaveLength(12);
+    expect(byName["synthetic-rarity-decoys"].borderColors).toEqual({
+      common: 5,
+      uncommon: 2,
+      rare: 2,
+      legendary: 1,
+      mythic: 1,
+      none: 1,
+    });
+    expect(byName["synthetic-mixed-stacks"].borderColors).toEqual({}); // legacy answer, no border fields
+    expect(report.totals.decoys).toEqual({ correct: 4, total: 4 });
+    expect(report.totals.decoyRejectionAccuracy).toBe(1);
+    expect(report.skipped).toEqual([]);
+  });
+});
+
+describe("runEval and real-* fixtures", () => {
+  async function fixturesDirWith(names: string[]): Promise<string> {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "elite-ledger-eval-"));
+    for (const name of names) {
+      await mkdir(path.join(dir, name));
+      await writeFile(
+        path.join(dir, name, "expected.json"),
+        JSON.stringify({ looksLikeBankLog: true, rows: [] }),
+      );
+      await writeFile(path.join(dir, name, "screenshot.png"), new Uint8Array([137, 80, 78, 71]));
+    }
+    return dir;
+  }
+
+  it("names them by their real- prefix", () => {
+    expect(isRealFixture("real-sandy-2026-09-22")).toBe(true);
+    expect(isRealFixture("synthetic-all-items")).toBe(false);
+  });
+
+  it("skips a fixture without a canned answer in mock mode instead of failing", async () => {
+    const dir = await fixturesDirWith(["real-one", "synthetic-x"]);
+    const report = await runEval({ fixturesDir: dir, mock: true });
+
+    expect(report.fixtures).toEqual([]);
+    expect(report.skipped.map((skip) => skip.name)).toEqual(["real-one", "synthetic-x"]);
+    expect(report.skipped[0].reason).toMatch(/mock-response\.json/);
+    expect(report.totals.fixtures).toBe(0);
+  });
+
+  it("runs only the real ones with realOnly, and says so when there are none", async () => {
+    const dir = await fixturesDirWith(["real-one", "synthetic-x"]);
+    const report = await runEval({ fixturesDir: dir, mock: true, realOnly: true });
+    expect(report.skipped.map((skip) => skip.name)).toEqual(["real-one"]);
+
+    const none = await fixturesDirWith(["synthetic-x"]);
+    await expect(runEval({ fixturesDir: none, mock: true, realOnly: true })).rejects.toThrow(
+      /no real fixtures/,
+    );
   });
 });

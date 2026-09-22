@@ -10,6 +10,8 @@
         "top": 0.0875,
         "bottom": 0.1987
       },
+      "borderColorWord": "",
+      "borderColor": "none",
       "gameTimestamp": "13.09.2026 - 19:22",
       "character": "Leftaltar",
       "direction": "deposit",
@@ -25,6 +27,8 @@
         "top": 0.1987,
         "bottom": 0.3098
       },
+      "borderColorWord": "",
+      "borderColor": "none",
       "gameTimestamp": "13.09.2026 - 19:21",
       "character": "Leftaltar",
       "direction": "deposit",
@@ -40,6 +44,8 @@
         "top": 0.3098,
         "bottom": 0.4209
       },
+      "borderColorWord": "green",
+      "borderColor": "common",
       "gameTimestamp": "13.09.2026 - 19:20",
       "character": "Leftaltar",
       "direction": "deposit",
@@ -55,6 +61,8 @@
         "top": 0.4209,
         "bottom": 0.532
       },
+      "borderColorWord": "",
+      "borderColor": "none",
       "gameTimestamp": "13.09.2026 - 19:18",
       "character": "xReacher",
       "direction": "deposit",
@@ -70,6 +78,8 @@
         "top": 0.532,
         "bottom": 0.6431
       },
+      "borderColorWord": "",
+      "borderColor": "none",
       "gameTimestamp": "13.09.2026 - 19:15",
       "character": "xReacher",
       "direction": "deposit",
@@ -85,6 +95,8 @@
         "top": 0.6431,
         "bottom": 0.7542
       },
+      "borderColorWord": "green",
+      "borderColor": "common",
       "gameTimestamp": "13.09.2026 - 19:14",
       "character": "Leftaltar",
       "direction": "deposit",
@@ -100,6 +112,8 @@
         "top": 0.7542,
         "bottom": 0.8653
       },
+      "borderColorWord": "",
+      "borderColor": "none",
       "gameTimestamp": "13.09.2026 - 19:11",
       "character": "Leftaltar",
       "direction": "deposit",
@@ -115,6 +129,8 @@
         "top": 0.8653,
         "bottom": 0.9764
       },
+      "borderColorWord": "",
+      "borderColor": "none",
       "gameTimestamp": "13.09.2026 - 19:09",
       "character": "xReacher",
       "direction": "deposit",

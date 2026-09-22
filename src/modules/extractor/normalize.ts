@@ -10,13 +10,24 @@
  *    digits); the thousands grouping of the printed form is checked and the
  *    two readings have to agree;
  *  - item ids are limited to the catalog plus "unknown";
+ *  - an item's identity is its art and its border: when the border colour
+ *    the model saw stands for a rarity whose border differs from the chosen
+ *    item's, the row becomes "unknown" (the same art with another border is
+ *    another item); a border it could not see caps the row's confidence;
  *  - blueprint-fragment and Silver Coin rows never come back confident: a
  *    wrong fragment or a wrong magnitude costs too much, so a human always
  *    looks (issue #19);
  *  - an image that is not a bank log yields no rows.
  */
-import type { CatalogItem } from "@/catalog";
-import { UNKNOWN_ITEM, type ModelOutput, type ModelRow } from "./schema";
+import { rarityBorderWord, sameBorderColor, type CatalogItem } from "@/catalog";
+import {
+  BORDER_COLORS,
+  UNKNOWN_ITEM,
+  isRarity,
+  type BorderColor,
+  type ModelOutput,
+  type ModelRow,
+} from "./schema";
 
 /** A row's vertical extent as fractions (0-1) of the image height, `top < bottom`. */
 export interface RowBox {
@@ -29,6 +40,15 @@ export interface ParsedRow {
   itemId: string;
   /** Short text description of the icon (input for the text-only second judge). */
   iconDescription: string;
+  /**
+   * The rarity the icon's border colour stands for as the model saw it, or
+   * "none" / "unclear". Absent when the model did not report it. A value
+   * that disagrees with the item's rarity has already turned `itemId` into
+   * "unknown".
+   */
+  borderColor?: BorderColor;
+  /** The border's colour in the model's own word ("blue"), "" for no border. Absent when not reported. */
+  borderColorWord?: string;
   /** Decimal digits only, bigint-safe. */
   quantity: string;
   /**
@@ -62,8 +82,10 @@ export interface NormalizedOutput {
 
 /** Confidence ceiling for a row whose item id or quantity we had to replace. */
 export const REPAIRED_ROW_CONFIDENCE = 0.3;
-/** Confidence ceiling for a row with an odd-looking timestamp, amount or no name. */
+/** Confidence ceiling for a row with an odd-looking timestamp, amount, no name, or a border that contradicts the item. */
 export const SUSPECT_ROW_CONFIDENCE = 0.5;
+/** Confidence ceiling for a row whose border the model could not see, so the rarity went unchecked. */
+export const UNSEEN_BORDER_CONFIDENCE = 0.7;
 /** Confidence ceiling for rows a human must always look at: fragments and money. */
 export const ALWAYS_CHECKED_CONFIDENCE = 0.8;
 
@@ -172,9 +194,35 @@ export function sortByBox<Row extends { box?: RowBox }>(rows: readonly Row[]): R
   return [...rows].sort((a, b) => (a.box as RowBox).top - (b.box as RowBox).top);
 }
 
-type ItemKinds = ReadonlyMap<string, CatalogItem["kind"]>;
+export interface RowBorder {
+  /** What the model reported, mapped onto the closed set (an off-list value counts as "unclear"). */
+  color: BorderColor;
+  /** The model's own colour word, or the off-list value it gave, or "". */
+  word: string;
+}
 
-function normalizeRow(row: ModelRow, kinds: ItemKinds): ParsedRow {
+/**
+ * The model's `borderColor` / `borderColorWord` as a `RowBorder`, or
+ * undefined when the answer predates the fields. An off-list `borderColor`
+ * (a fallback model writing "blue" into the enum slot) becomes "unclear" and
+ * is kept as the word.
+ */
+export function normalizeBorder(
+  borderColor: string | null | undefined,
+  borderColorWord: string | null | undefined,
+): RowBorder | undefined {
+  const raw = borderColor?.trim() ?? "";
+  const word = borderColorWord?.trim() ?? "";
+  if (raw === "" && borderColorWord === undefined) return undefined;
+  if (raw === "") return { color: "unclear", word };
+  if ((BORDER_COLORS as readonly string[]).includes(raw)) return { color: raw as BorderColor, word };
+  return { color: "unclear", word: word || raw };
+}
+
+type ItemInfo = Pick<CatalogItem, "kind" | "rarity" | "name">;
+type Items = ReadonlyMap<string, ItemInfo>;
+
+function normalizeRow(row: ModelRow, items: Items): ParsedRow {
   let confidence = clampConfidence(row.confidence);
   const reasons: string[] = [];
   const modelReason = row.lowConfidenceReason?.trim();
@@ -186,11 +234,32 @@ function normalizeRow(row: ModelRow, kinds: ItemKinds): ParsedRow {
   };
 
   let itemId = row.itemId.trim();
-  if (itemId !== UNKNOWN_ITEM && !kinds.has(itemId)) {
+  if (itemId !== UNKNOWN_ITEM && !items.has(itemId)) {
     cap(REPAIRED_ROW_CONFIDENCE, `Model returned an item id that is not tracked ("${itemId}").`);
     itemId = UNKNOWN_ITEM;
   }
-  const kind = kinds.get(itemId);
+
+  // Identity is art and border. Currency has no border in the log, so it is
+  // left out; an "unknown" row has nothing to check against.
+  const border = normalizeBorder(row.borderColor, row.borderColorWord);
+  const picked = items.get(itemId);
+  if (border && picked && picked.kind !== "currency") {
+    const seen = border.word ? `${border.color} ("${border.word}")` : border.color;
+    if (isRarity(border.color)) {
+      if (!sameBorderColor(border.color, picked.rarity)) {
+        cap(
+          SUSPECT_ROW_CONFIDENCE,
+          `Border color ${seen} does not match ${picked.name} (${picked.rarity}, ${rarityBorderWord(picked.rarity)} border); item set to unknown.`,
+        );
+        itemId = UNKNOWN_ITEM;
+      }
+    } else if (border.color === "none") {
+      cap(UNSEEN_BORDER_CONFIDENCE, "No border was seen around the icon, so its rarity could not be checked.");
+    } else {
+      cap(UNSEEN_BORDER_CONFIDENCE, "The border color could not be made out, so the item's rarity could not be checked.");
+    }
+  }
+  const kind = items.get(itemId)?.kind;
 
   const quantityText = row.quantityText?.trim();
   const amount = checkAmount(row.quantityText, row.quantity);
@@ -236,6 +305,7 @@ function normalizeRow(row: ModelRow, kinds: ItemKinds): ParsedRow {
   return {
     itemId,
     iconDescription: row.iconDescription.trim(),
+    ...(border ? { borderColor: border.color, borderColorWord: border.word } : {}),
     quantity: amount.value,
     ...(quantityText !== undefined ? { quantityText } : {}),
     ...(box ? { box } : {}),
@@ -253,7 +323,7 @@ function plural(count: number, noun: string): string {
 
 export function normalizeOutput(
   output: ModelOutput,
-  catalog: readonly Pick<CatalogItem, "id" | "kind">[],
+  catalog: readonly Pick<CatalogItem, "id" | "kind" | "rarity" | "name">[],
 ): NormalizedOutput {
   const warnings = output.notes.map((note) => note.trim()).filter((note) => note !== "");
 
@@ -268,7 +338,9 @@ export function normalizeOutput(
     };
   }
 
-  const kinds: ItemKinds = new Map(catalog.map((item) => [item.id, item.kind]));
+  const items: Items = new Map(
+    catalog.map((item) => [item.id, { kind: item.kind, rarity: item.rarity, name: item.name }]),
+  );
   const deposits = output.rows.filter((row) => row.direction === "deposit");
   const dropped = output.rows.length - deposits.length;
   if (dropped > 0) {
@@ -283,7 +355,7 @@ export function normalizeOutput(
     warnings.unshift(`Dropped ${plural(dropped, "non-deposit row")} (${detail}).`);
   }
 
-  const rows = sortByBox(deposits.map((row) => normalizeRow(row, kinds)));
+  const rows = sortByBox(deposits.map((row) => normalizeRow(row, items)));
   const characters = [...new Set(rows.map((row) => row.character).filter((name) => name !== ""))];
 
   return { looksLikeBankLog: true, rows, characters, warnings };
