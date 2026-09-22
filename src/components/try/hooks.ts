@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import type { RowSelection } from "./ReviewRows";
 
 /** Rail + detail from here up; stacked cards below. */
 export const DESKTOP_QUERY = "(min-width: 1024px)";
@@ -49,4 +50,48 @@ export function useImageSize(src: string | null): ImageSize | null {
   }, [src]);
 
   return loaded && loaded.src === src ? loaded.size : null;
+}
+
+/** The width of an element, kept current by a ResizeObserver; 0 before the first measure. */
+export function useElementWidth<T extends HTMLElement>(): [RefObject<T | null>, number] {
+  const ref = useRef<T | null>(null);
+  const [width, setWidth] = useState(0);
+
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () => setWidth(element.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  return [ref, width];
+}
+
+/** The row ↔ screenshot link of one entry: which row is lit, and which one was picked on the image. */
+export interface RowLink {
+  activeRowId: string | null;
+  /** Where the lit row was pointed at: on the rows, or on the screenshot itself. */
+  activeFrom: "rows" | "shot";
+  setActiveRow: (rowId: string | null, from: "rows" | "shot") => void;
+  selection: RowSelection | null;
+  selectRow: (rowId: string) => void;
+}
+
+export function useRowLink(): RowLink {
+  const [active, setActive] = useState<{ rowId: string | null; from: "rows" | "shot" }>({
+    rowId: null,
+    from: "rows",
+  });
+  const [selection, setSelection] = useState<RowSelection | null>(null);
+  return {
+    activeRowId: active.rowId,
+    activeFrom: active.from,
+    setActiveRow: (rowId, from) =>
+      setActive((current) => (current.rowId === rowId && current.from === from ? current : { rowId, from })),
+    selection,
+    selectRow: (rowId) => setSelection((current) => ({ rowId, nonce: (current?.nonce ?? 0) + 1 })),
+  };
 }

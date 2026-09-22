@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { AnimatePresence, motion, usePresence } from "motion/react";
 import {
   Badge,
@@ -29,7 +29,9 @@ import {
   activeRows,
   addRowDefaults,
   deletedRows,
+  matchesCharacter,
   rowLookReasons,
+  rowsInScope,
   type ImageReview,
   type LookReason,
   type ReviewAction,
@@ -77,6 +79,8 @@ export interface ReviewRowsProps {
   selection: RowSelection | null;
   /** Character names read from the batch, offered while typing one. */
   characters: readonly string[];
+  /** Only this character's rows are shown (""; the rows without a name); null shows every row. */
+  character?: string | null;
   animate: boolean;
   /**
    * A manual entry: every row is typed by hand. The add-row form is open from
@@ -489,7 +493,7 @@ function CardRow(props: RowProps & { expanded: boolean; onExpand: (rowId: string
   );
 }
 
-const ADD_ROW_ITEM_ID = "add-row-item";
+// Ids come from `useId`: the same form may be on the page twice (an inline card and the check dialog).
 
 /**
  * "Add row": item, quantity, game time, character (the last two start from the
@@ -500,6 +504,7 @@ function AddRowForm({
   review,
   sheet,
   characters,
+  character,
   focusOnMount,
   cancelLabel,
   onAdd,
@@ -508,6 +513,8 @@ function AddRowForm({
   review: ImageReview;
   sheet: boolean;
   characters: readonly string[];
+  /** The character filter in force: a new row starts with that name. */
+  character: string | null;
   /**
    * Put the focus on the item picker when the form appears: "quiet" without
    * scrolling (a manual entry just opened), "follow" scrolling to it (the fresh
@@ -519,17 +526,26 @@ function AddRowForm({
   onCancel: () => void;
 }) {
   const defaults = addRowDefaults(review);
+  const id = useId();
+  const ids = {
+    item: `${id}-item`,
+    quantity: `${id}-quantity`,
+    sanity: `${id}-sanity`,
+    time: `${id}-time`,
+    character: `${id}-character`,
+    list: `${id}-characters`,
+  };
   const [itemId, setItemId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [gameTimestamp, setGameTimestamp] = useState(defaults.gameTimestamp);
-  const [character, setCharacter] = useState(defaults.character);
+  const [characterName, setCharacter] = useState(character ?? defaults.character);
   const quantityRef = useRef<HTMLInputElement | null>(null);
   const parsed = parseQuantityInput(quantity);
   const ready = itemId !== "" && parsed.ok;
 
   useEffect(() => {
     if (!focusOnMount) return;
-    document.getElementById(ADD_ROW_ITEM_ID)?.focus({ preventScroll: focusOnMount === "quiet" });
+    document.getElementById(ids.item)?.focus({ preventScroll: focusOnMount === "quiet" });
     // Only when the form appears.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -540,7 +556,7 @@ function AddRowForm({
         aria-label="Add a row"
         onSubmit={(event) => {
           event.preventDefault();
-          if (ready) onAdd({ itemId, quantity: parsed.digits, gameTimestamp, character });
+          if (ready) onAdd({ itemId, quantity: parsed.digits, gameTimestamp, character: characterName });
         }}
         onKeyDown={(event) => {
           // Escape inside the item picker (a portal: outside the form's DOM) only closes the picker.
@@ -557,7 +573,7 @@ function AddRowForm({
                 value={itemId}
                 label={itemId ? `Item: ${itemName(itemId)}` : "Item: none yet"}
                 sheet={sheet}
-                triggerId={ADD_ROW_ITEM_ID}
+                triggerId={ids.item}
                 focusAfterPick={() => quantityRef.current?.focus()}
                 onSelect={setItemId}
               >
@@ -572,29 +588,29 @@ function AddRowForm({
             </span>
           </Flex>
           <Flex direction="column" gap="1" minWidth="0">
-            <Text as="label" size="1" color="gray" weight="medium" htmlFor="add-row-quantity">
+            <Text as="label" size="1" color="gray" weight="medium" htmlFor={ids.quantity}>
               Quantity
             </Text>
             <TextField.Root
               ref={quantityRef}
-              id="add-row-quantity"
+              id={ids.quantity}
               size="2"
               inputMode="decimal"
               autoComplete="off"
               placeholder="500,000,000 or 500m"
-              aria-describedby="add-row-quantity-sanity"
+              aria-describedby={ids.sanity}
               value={quantity}
               onChange={(event) => setQuantity(event.target.value)}
             />
-            <QuantitySanity input={quantity} id="add-row-quantity-sanity" />
+            <QuantitySanity input={quantity} id={ids.sanity} />
             {sheet && <SuffixKeys onPick={(suffix) => setQuantity((current) => withSuffix(current, suffix))} />}
           </Flex>
           <Flex direction="column" gap="1" minWidth="0">
-            <Text as="label" size="1" color="gray" weight="medium" htmlFor="add-row-time">
+            <Text as="label" size="1" color="gray" weight="medium" htmlFor={ids.time}>
               Game time
             </Text>
             <TextField.Root
-              id="add-row-time"
+              id={ids.time}
               size="2"
               autoComplete="off"
               placeholder="06.09.2026 - 23:21"
@@ -603,18 +619,18 @@ function AddRowForm({
             />
           </Flex>
           <Flex direction="column" gap="1" minWidth="0">
-            <Text as="label" size="1" color="gray" weight="medium" htmlFor="add-row-character">
+            <Text as="label" size="1" color="gray" weight="medium" htmlFor={ids.character}>
               Character
             </Text>
             <TextField.Root
-              id="add-row-character"
+              id={ids.character}
               size="2"
               autoComplete="off"
-              list="add-row-characters"
-              value={character}
+              list={ids.list}
+              value={characterName}
               onChange={(event) => setCharacter(event.target.value)}
             />
-            <datalist id="add-row-characters">
+            <datalist id={ids.list}>
               {characters.map((name) => (
                 <option key={name} value={name} />
               ))}
@@ -703,6 +719,7 @@ export function ReviewRows({
   onActiveRow,
   selection,
   characters,
+  character = null,
   animate,
   manual = false,
 }: ReviewRowsProps) {
@@ -731,8 +748,9 @@ export function ReviewRows({
     row?.querySelector<HTMLElement>("[data-row-check]")?.focus();
   }, [selection]);
 
-  const rows = activeRows(review);
-  const removed = deletedRows(review);
+  const rows = rowsInScope(review, character);
+  const hidden = activeRows(review).length - rows.length;
+  const removed = deletedRows(review).filter((row) => matchesCharacter(row.current, character));
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -761,11 +779,17 @@ export function ReviewRows({
 
   const shared = { imageId, dispatch, screenshot, onActiveRow, onDelete, characters, animate, manual };
   const emptyText =
-    removed.length > 0
-      ? "Every row was removed."
-      : manual
-        ? "No rows yet. Add the first one below."
-        : "No deposit rows were found in this screenshot.";
+    hidden > 0
+      ? `No rows for ${character === "" ? "rows without a name" : character} in this image.`
+      : removed.length > 0
+        ? "Every row was removed."
+        : manual
+          ? "No rows yet. Add the first one below."
+          : "No deposit rows were found in this screenshot.";
+  const hiddenText =
+    hidden > 0
+      ? `${hidden} ${hidden === 1 ? "row" : "rows"} from other characters hidden`
+      : null;
 
   return (
     <Flex direction="column" gap="3" ref={container} onKeyDown={onKeyDown}>
@@ -828,6 +852,12 @@ export function ReviewRows({
         </Card>
       )}
 
+      {hiddenText && rows.length > 0 && (
+        <Text size="1" color="gray" role="status">
+          {hiddenText}
+        </Text>
+      )}
+
       <Removed rows={removed} lastDeletedId={lastDeletedId} undoRef={undoRef} onRestore={onRestore} />
 
       {adding ? (
@@ -837,8 +867,9 @@ export function ReviewRows({
           review={review}
           sheet={!wide}
           characters={characters}
+          character={character}
           focusOnMount={manual ? (formRound === 0 ? "quiet" : "follow") : null}
-          cancelLabel={manual ? "Done" : "Cancel"}
+          cancelLabel={manual ? "Close form" : "Cancel"}
           onCancel={() => setAdding(false)}
           onAdd={(values) => {
             dispatch({ type: "addRow", imageId, values });

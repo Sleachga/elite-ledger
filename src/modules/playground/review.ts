@@ -411,9 +411,21 @@ export interface ReviewCounts {
   acceptable: number;
 }
 
-export function reviewCounts(image: ImageReview | undefined): ReviewCounts {
+/** Whether a row belongs to a character filter: null is every row, "" the rows without a name. */
+export function matchesCharacter(row: Pick<RowValues, "character">, character: string | null): boolean {
+  return character === null || row.character.trim() === character;
+}
+
+/** The rows that count and belong to the character (null: every one). */
+export function rowsInScope(image: ImageReview | undefined, character: string | null): ReviewRow[] {
+  return activeRows(image).filter((row) => matchesCharacter(row.current, character));
+}
+
+/** Counts over the rows of one character (null: every row); deleted rows are counted whatever their name. */
+export function reviewCounts(image: ImageReview | undefined, character: string | null = null): ReviewCounts {
   const counts: ReviewCounts = { rows: 0, toCheck: 0, edited: 0, added: 0, deleted: 0, acceptable: 0 };
   for (const row of image?.rows ?? []) {
+    if (!row.deleted && !matchesCharacter(row.current, character)) continue;
     if (row.deleted) {
       counts.deleted += 1;
       continue;
@@ -428,10 +440,13 @@ export function reviewCounts(image: ImageReview | undefined): ReviewCounts {
 }
 
 /** `reviewCounts` summed over a batch. */
-export function batchReviewCounts(images: readonly (ImageReview | undefined)[]): ReviewCounts {
+export function batchReviewCounts(
+  images: readonly (ImageReview | undefined)[],
+  character: string | null = null,
+): ReviewCounts {
   const total: ReviewCounts = { rows: 0, toCheck: 0, edited: 0, added: 0, deleted: 0, acceptable: 0 };
   for (const image of images) {
-    const counts = reviewCounts(image);
+    const counts = reviewCounts(image, character);
     for (const key of Object.keys(total) as (keyof ReviewCounts)[]) total[key] += counts[key];
   }
   return total;

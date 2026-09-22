@@ -109,6 +109,7 @@
 }
 
 .entryHeader[data-mode="rail"] {
+  flex-wrap: wrap;
   padding: var(--space-2);
   padding-right: var(--space-3);
   border: 1px solid var(--gray-a4);
@@ -116,6 +117,13 @@
   transition:
     border-color 200ms ease-out,
     background-color 200ms ease-out;
+}
+
+/* The rail's "Check N" button: a line of its own, under the thumbnail and name. */
+.railCheck {
+  display: flex;
+  flex-basis: 100%;
+  justify-content: flex-end;
 }
 
 .entryHeader[data-mode="rail"]:hover {
@@ -202,14 +210,172 @@
   }
 }
 
-.characterBadge {
-  max-width: 100%;
+/* A stat tile that is a button (the "To check" tile opens the checker). */
+.statButton {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 200ms ease-out;
+}
+
+.statButton:hover {
+  background-color: var(--gray-a3);
+}
+
+.statButton:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: 2px;
+}
+
+/* "By character" toggle chips: one character, or all. */
+.chip {
+  display: inline-flex;
+  align-items: center;
   gap: var(--space-2);
+  max-width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--gray-a6);
+  border-radius: var(--radius-2);
+  background: var(--gray-a2);
+  color: var(--gray-12);
+  font: inherit;
+  font-size: var(--font-size-1);
+  cursor: pointer;
+  transition:
+    border-color 200ms ease-out,
+    background-color 200ms ease-out;
+}
+
+.chip:hover {
+  border-color: var(--gray-a8);
+  background: var(--gray-a3);
+}
+
+.chip[aria-pressed="true"] {
+  border-color: var(--accent-a8);
+  background: var(--accent-a3);
+  color: var(--accent-12);
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: 1px;
 }
 
 .characterName {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.confirmCard {
+  /* "Go to Confirm" scrolls here: clear the sticky top bar. */
+  scroll-margin-top: 72px;
+}
+
+.confirmCard[data-ready="true"] {
+  border: 1px solid var(--accent-a7);
+}
+
+/* The Upload → Check → Confirm steps. */
+.stepsNav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.steps {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* The line between two steps. */
+.step + .step::before {
+  content: "";
+  flex-shrink: 0;
+  width: 20px;
+  height: 1px;
+  margin: 0 var(--space-2);
+  background: var(--gray-a6);
+}
+
+@media (min-width: 520px) {
+  .step + .step::before {
+    width: 40px;
+  }
+}
+
+.stepButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 2px var(--space-2) 2px 2px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--gray-11);
+  font: inherit;
+  font-size: var(--font-size-2);
+  white-space: nowrap;
+}
+
+button.stepButton {
+  cursor: pointer;
+  transition: background-color 200ms ease-out;
+}
+
+button.stepButton:hover {
+  background: var(--gray-a3);
+}
+
+button.stepButton:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: 1px;
+}
+
+.stepMark {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--gray-a7);
+  border-radius: 50%;
+  font-size: var(--font-size-1);
+  font-weight: var(--font-weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.step[data-state="current"] .stepButton {
+  color: var(--gray-12);
+  font-weight: var(--font-weight-medium);
+}
+
+.step[data-state="current"] .stepMark {
+  border-color: var(--accent-9);
+  background: var(--accent-9);
+  color: var(--accent-contrast);
+}
+
+.step[data-state="done"] .stepMark {
+  border-color: var(--green-a7);
+  background: var(--green-a3);
+  color: var(--green-11);
 }
 
 .row:hover {
@@ -262,7 +428,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .dropzone,
-  .entryHeader[data-mode="rail"] {
+  .entryHeader[data-mode="rail"],
+  .statButton,
+  .chip,
+  button.stepButton {
     transition: none;
   }
 
