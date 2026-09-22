@@ -4,3 +4,6 @@
 ANTHROPIC_API_KEY="op://Private/elite ledger anthropic api key/credential"
 TRY_PASSCODE="op://Private/elite-ledger try passcode/password"
 ADMIN_PASSCODE="op://Private/elite-ledger admin passcode/password"
+
+# Not a secret; plain value.
+NEXT_PUBLIC_SHEET_URL=https://docs.google.com/spreadsheets/d/1U3-80X9B94O6YlO0IjHG6Njn5R0d4f4fasasUBoWdDo/edit

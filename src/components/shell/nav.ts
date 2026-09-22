@@ -3,12 +3,8 @@ export interface NavEntry {
   label: string;
 }
 
-/**
- * Where the Upload button (desktop) and the Upload tab (mobile) go. Until the
- * real upload flow exists they open the `/try` playground; set this back to
- * "/upload" to revert.
- */
-export const UPLOAD_HREF = "/try";
+/** Where the Upload button (desktop) and the Upload tab (mobile) go. */
+export const UPLOAD_HREF = "/upload";
 
 /** The admin area: a small link on the right of the desktop top bar, and an entry on the mobile More page. */
 export const ADMIN_HREF = "/admin";
@@ -27,7 +23,6 @@ export const TOP_NAV: readonly NavEntry[] = [
   { href: "/ledger", label: "Ledger" },
   { href: "/crafts", label: "Crafts" },
   { href: "/audit", label: "Audit" },
-  { href: "/try", label: "Try" },
 ];
 
 export function isActivePath(pathname: string, href: string): boolean {
