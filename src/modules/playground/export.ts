@@ -5,7 +5,7 @@
  * component does the clipboard and the download.
  */
 import { findItem } from "@/catalog";
-import type { RowValues } from "./review";
+import { matchesCharacter, type RowValues } from "./review";
 
 export const TSV_COLUMNS = ["Game time", "Character", "Item", "Quantity", "Image"] as const;
 
@@ -28,15 +28,23 @@ export function exportItemName(itemId: string): string {
   return findItem(itemId)?.name ?? "Unknown";
 }
 
+export interface TsvOptions {
+  header?: boolean;
+  /** Only this character's rows (""; the rows without a name). Absent or null: every row. */
+  character?: string | null;
+}
+
 /**
  * The whole batch as TSV: game timestamp, character, item name, quantity as
  * plain digits, image file name. One header line, one line per row, CRLF-free.
  */
-export function buildTsv(images: readonly TsvImage[], options: { header?: boolean } = {}): string {
+export function buildTsv(images: readonly TsvImage[], options: TsvOptions = {}): string {
   const lines: string[] = [];
+  const character = options.character ?? null;
   if (options.header ?? true) lines.push(TSV_COLUMNS.join("\t"));
   for (const image of images) {
     for (const row of image.rows) {
+      if (!matchesCharacter(row, character)) continue;
       lines.push(
         [
           tsvCell(row.gameTimestamp),

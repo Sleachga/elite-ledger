@@ -45,6 +45,16 @@ describe("buildTsv", () => {
     expect(tsv).toBe("07.09.2026 - 18:02\txReacher\tUnknown\t7\tPasted image");
   });
 
+  it("keeps only one character's rows when asked", () => {
+    const images = [
+      { fileName: "a.png", rows: [values("ruby", "5"), values("ruby", "6", { character: "Leftaltar" }), values("ruby", "7", { character: " " })] },
+    ];
+    expect(buildTsv(images, { header: false, character: "Leftaltar" })).toBe("07.09.2026 - 18:02\tLeftaltar\tRuby\t6\ta.png");
+    // "" is the rows without a name; null is every row.
+    expect(buildTsv(images, { header: false, character: "" })).toBe("07.09.2026 - 18:02\t\tRuby\t7\ta.png");
+    expect(buildTsv(images, { header: false, character: null }).split("\n")).toHaveLength(3);
+  });
+
   it("is only the header for a batch without rows", () => {
     expect(buildTsv([])).toBe("Game time\tCharacter\tItem\tQuantity\tImage");
     expect(buildTsv([{ fileName: "a.png", rows: [] }], { header: false })).toBe("");
