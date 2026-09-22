@@ -1,10 +1,11 @@
 /**
  * pnpm eval:extractor [--mock] [--json] [--min-accuracy 0.9] [--fixtures <dir>]
- *                     [--upscale on|off] [--max-edge <px>] [fixture ...]
+ *                     [--real-only] [--upscale on|off] [--max-edge <px>] [fixture ...]
  *
  * Runs every fixture in `fixtures/extractor/` through the extractor and
  * prints per-fixture and total accuracy. `--mock` needs no API key (this is
- * what CI runs); without it each fixture is one real API call. `--upscale` and
+ * what CI runs); without it each fixture is one real API call. `--real-only`
+ * runs only the `real-*` fixtures (real screenshots). `--upscale` and
  * `--max-edge` override EXTRACTOR_UPSCALE / EXTRACTOR_UPSCALE_MAX_EDGE, to
  * compare runs with and without the enlargement.
  */
@@ -29,8 +30,10 @@ function printFixture(result: FixtureResult) {
     : result.missing === 0 && result.extra === 0 && !flag
       ? "ok"
       : "DIFF";
+  const decoys =
+    result.decoys.total > 0 ? `  decoys unknown ${result.decoys.correct}/${result.decoys.total}` : "";
   console.log(
-    `${status.padEnd(5)} ${result.name}  matched ${result.matched}/${result.expected}  extra ${result.extra}${flag}`,
+    `${status.padEnd(5)} ${result.name}  matched ${result.matched}/${result.expected}  extra ${result.extra}${decoys}${flag}`,
   );
   if (result.error) console.log(`      ${result.error.kind}: ${result.error.message}`);
   for (const row of result.missingRows) console.log(`      missing ${JSON.stringify(row)}`);
@@ -56,6 +59,7 @@ async function main() {
       json: { type: "boolean", default: false },
       "min-accuracy": { type: "string", default: "0" },
       fixtures: { type: "string" },
+      "real-only": { type: "boolean", default: false },
       upscale: { type: "string" },
       "max-edge": { type: "string" },
     },
@@ -98,15 +102,18 @@ async function main() {
   }
 
   const fixturesDir = values.fixtures ? path.resolve(values.fixtures) : defaultFixturesDir();
-  console.log(`extractor eval (${values.mock ? "mock" : "live"}) over ${fixturesDir}\n`);
+  const scope = values["real-only"] ? "real fixtures only" : "all fixtures";
+  console.log(`extractor eval (${values.mock ? "mock" : "live"}, ${scope}) over ${fixturesDir}\n`);
 
   const report = await runEval({
     fixturesDir,
     mock: values.mock,
     only: positionals,
+    realOnly: values["real-only"],
     deps,
     onFixture: printFixture,
   });
+  for (const skip of report.skipped) console.log(`skip  ${skip.name}  ${skip.reason}`);
 
   const t = report.totals;
   const usage = report.fixtures.reduce(
@@ -121,13 +128,14 @@ async function main() {
   console.log(
     [
       "",
-      `fixtures          ${t.fixtures} (${t.errors} errored)`,
+      `fixtures          ${t.fixtures} (${t.errors} errored, ${report.skipped.length} skipped)`,
       `rows              matched ${t.matched} / expected ${t.expected}, missing ${t.missing}, extra ${t.extra}`,
       `row accuracy      ${percent(t.rowAccuracy)}   matched / (matched + missing + extra)`,
       `item-id accuracy  ${percent(t.itemIdAccuracy)}`,
       `quantity accuracy ${percent(t.quantityAccuracy)}`,
       `fragment item-id  ${category(t.fragmentItemIdAccuracy, t.fragmentItemId)}`,
       `silver quantity   ${category(t.silverQuantityAccuracy, t.silverQuantity)}`,
+      `decoy rejection   ${category(t.decoyRejectionAccuracy, t.decoys)}   decoys answered unknown / decoys shown`,
       `row boxes         ${category(t.boxAccuracy, t.boxes)}`,
       `bank-log flag     ${percent(t.bankLogFlagAccuracy)}`,
       ...(usage.input + usage.output > 0

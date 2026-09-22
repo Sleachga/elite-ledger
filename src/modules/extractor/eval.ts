@@ -3,19 +3,27 @@
  *
  * A fixture is a directory with
  *   screenshot.png|jpg|jpeg|webp   the image
- *   expected.json                  { looksLikeBankLog, rows: [{ itemId, quantity, gameTimestamp, character, box? }] }
+ *   expected.json                  { looksLikeBankLog, rows: [{ itemId, quantity, gameTimestamp, character, box?, decoy? }] }
  *                                  (deposit rows only: what should reach the verify screen;
- *                                  `box` = the row's { top, bottom } as fractions of the image height)
+ *                                  `box` = the row's { top, bottom } as fractions of the image height;
+ *                                  `decoy` = the id of the untracked lookalike drawn there, whose
+ *                                  itemId is expected to be "unknown")
  *   mock-response.json             optional canned *model* output; `mock: true` feeds it through
  *                                  a fake client, so the extractor's own rules still run
+ *
+ * Fixture directories named `real-*` hold real screenshots (added by hand
+ * from the upload page's "Download fixture"); `realOnly` runs just those. In
+ * mock mode a fixture without `mock-response.json` is skipped, not failed, so
+ * a real screenshot can land without a canned answer.
  *
  * Rows are compared order-insensitively as multisets of
  * (itemId, quantity, gameTimestamp, character): identical rows are separate
  * deposits and each has to be found.
  *
- * Two categories get their own numbers because a mistake there costs the most
- * (issue #19): item-id accuracy over blueprint-fragment rows, and quantity
- * accuracy over Silver Coin rows.
+ * Three categories get their own numbers because a mistake there costs the
+ * most: item-id accuracy over blueprint-fragment rows and quantity accuracy
+ * over Silver Coin rows (issue #19), and decoy rejection: how many rows
+ * drawn from an untracked lookalike came back as "unknown".
  */
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
@@ -28,6 +36,7 @@ import {
   type ImageMediaType,
   type UpscaleReport,
 } from "./index";
+import { UNKNOWN_ITEM } from "./schema";
 import { fakeClient, fakeMessage } from "./testing";
 
 const boxSchema = z.object({ top: z.number(), bottom: z.number() });
@@ -38,6 +47,8 @@ const expectedRowSchema = z.object({
   character: z.string(),
   /** Where the row is, as fractions of the image height. Not part of row matching. */
   box: boxSchema.optional(),
+  /** The untracked lookalike this row was drawn from; its itemId should be "unknown". Not part of row matching. */
+  decoy: z.string().optional(),
 });
 const expectedSchema = z.object({
   looksLikeBankLog: z.boolean(),
@@ -60,6 +71,14 @@ const SCREENSHOT_TYPES: Record<string, ImageMediaType> = {
   "screenshot.webp": "image/webp",
 };
 
+const MOCK_FILE = "mock-response.json";
+const REAL_PREFIX = "real-";
+
+/** Fixture directories named `real-*` hold real screenshots. */
+export function isRealFixture(name: string): boolean {
+  return name.startsWith(REAL_PREFIX);
+}
+
 export interface FixtureResult {
   name: string;
   expected: number;
@@ -78,6 +97,8 @@ export interface FixtureResult {
   fragmentItemId: CategoryCount;
   /** Silver Coin rows: how many got the right quantity. */
   silverQuantity: CategoryCount;
+  /** Decoy rows (untracked lookalikes): how many came back as "unknown". */
+  decoys: CategoryCount;
   /** Expected rows that carry a `box`: how many extracted boxes have their centre inside it. */
   boxes: CategoryCount;
   looksLikeBankLog: { expected: boolean; actual: boolean | null };
@@ -116,6 +137,9 @@ export interface EvalTotals {
   silverQuantity: CategoryCount;
   /** Share of Silver Coin rows with the right quantity (1 when there are none). */
   silverQuantityAccuracy: number;
+  decoys: CategoryCount;
+  /** Share of decoy rows answered "unknown" (1 when there are none). */
+  decoyRejectionAccuracy: number;
   boxes: CategoryCount;
   /** Share of expected boxes that contain the extracted box's centre (1 when there are none). */
   boxAccuracy: number;
@@ -128,6 +152,8 @@ export interface EvalReport {
   mode: "mock" | "live";
   fixturesDir: string;
   fixtures: FixtureResult[];
+  /** Fixtures that were not run (mock mode without a canned answer). */
+  skipped: { name: string; reason: string }[];
   totals: EvalTotals;
 }
 
@@ -137,6 +163,8 @@ export interface EvalOptions {
   mock?: boolean;
   /** Only run fixtures whose directory name is listed. */
   only?: string[];
+  /** Only run the `real-*` fixtures. */
+  realOnly?: boolean;
   /** Passed through to `extract()` in live mode (model, effort, client, upscale, ...). */
   deps?: ExtractDeps;
   /** Called after each fixture, for progress output. */
@@ -182,6 +210,7 @@ export interface RowScore {
   quantityCorrect: number;
   fragmentItemId: CategoryCount;
   silverQuantity: CategoryCount;
+  decoys: CategoryCount;
   boxes: CategoryCount;
 }
 
@@ -265,6 +294,11 @@ export function scoreRows(
       pairs.filter((pair) => categories.silverIds.has(pair.want.itemId)),
       sameQuantity,
     ),
+    // A decoy is rejected when its row came back as "unknown" (a missing row is not a rejection).
+    decoys: count(
+      pairs.filter((pair) => pair.want.decoy !== undefined),
+      (pair) => pair.got?.itemId === UNKNOWN_ITEM,
+    ),
     boxes: count(
       pairs.filter((pair) => pair.want.box !== undefined),
       (pair) => boxContainsCentre(pair.want.box, pair.got?.box),
@@ -284,10 +318,10 @@ async function runFixture(dir: string, name: string, options: EvalOptions): Prom
 
   let deps: ExtractDeps = options.deps ?? {};
   if (options.mock) {
-    if (!files.includes("mock-response.json")) {
-      throw new Error(`fixture "${name}" has no mock-response.json, so it cannot run with --mock`);
+    if (!files.includes(MOCK_FILE)) {
+      throw new Error(`fixture "${name}" has no ${MOCK_FILE}, so it cannot run with --mock`);
     }
-    const canned = await readJson(path.join(dir, "mock-response.json"));
+    const canned = await readJson(path.join(dir, MOCK_FILE));
     deps = { ...deps, client: fakeClient(fakeMessage(canned)) };
   }
 
@@ -317,6 +351,7 @@ async function runFixture(dir: string, name: string, options: EvalOptions): Prom
       quantityCorrect: score.quantityCorrect,
       fragmentItemId: score.fragmentItemId,
       silverQuantity: score.silverQuantity,
+      decoys: score.decoys,
       boxes: score.boxes,
       looksLikeBankLog: { expected: expected.looksLikeBankLog, actual: result.looksLikeBankLog },
       missingRows: score.missingRows,
@@ -340,6 +375,7 @@ async function runFixture(dir: string, name: string, options: EvalOptions): Prom
       quantityCorrect: 0,
       fragmentItemId: score.fragmentItemId,
       silverQuantity: score.silverQuantity,
+      decoys: score.decoys,
       boxes: score.boxes,
       missingRows: expected.rows.map(pick),
       extraRows: [],
@@ -366,6 +402,7 @@ export function totalsOf(fixtures: FixtureResult[]): EvalTotals {
   const extra = sum((r) => r.extra);
   const fragmentItemId = sumCategory((r) => r.fragmentItemId);
   const silverQuantity = sumCategory((r) => r.silverQuantity);
+  const decoys = sumCategory((r) => r.decoys);
   const boxes = sumCategory((r) => r.boxes);
   return {
     fixtures: fixtures.length,
@@ -381,6 +418,8 @@ export function totalsOf(fixtures: FixtureResult[]): EvalTotals {
     fragmentItemIdAccuracy: ratio(fragmentItemId.correct, fragmentItemId.total),
     silverQuantity,
     silverQuantityAccuracy: ratio(silverQuantity.correct, silverQuantity.total),
+    decoys,
+    decoyRejectionAccuracy: ratio(decoys.correct, decoys.total),
     boxes,
     boxAccuracy: ratio(boxes.correct, boxes.total),
     bankLogFlagAccuracy: ratio(
@@ -398,14 +437,27 @@ export async function runEval(options: EvalOptions = {}): Promise<EvalReport> {
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
     .map((entry) => entry.name)
     .filter((name) => !options.only?.length || options.only.includes(name))
+    .filter((name) => !options.realOnly || isRealFixture(name))
     .sort();
-  if (names.length === 0) throw new Error(`no fixtures found in ${fixturesDir}`);
+  if (names.length === 0) {
+    throw new Error(
+      options.realOnly
+        ? `no real fixtures in ${fixturesDir}: add fixtures/extractor/${REAL_PREFIX}<name>/ with screenshot.png and expected.json (README, "Extractor > Eval")`
+        : `no fixtures found in ${fixturesDir}`,
+    );
+  }
 
   // One at a time: in live mode the first request writes the prompt cache
   // (system + reference icons) and the rest read it.
   const fixtures: FixtureResult[] = [];
+  const skipped: EvalReport["skipped"] = [];
   for (const name of names) {
-    const result = await runFixture(path.join(fixturesDir, name), name, options);
+    const dir = path.join(fixturesDir, name);
+    if (options.mock && !(await readdir(dir)).includes(MOCK_FILE)) {
+      skipped.push({ name, reason: `no ${MOCK_FILE} (real screenshots have none; run it live)` });
+      continue;
+    }
+    const result = await runFixture(dir, name, options);
     fixtures.push(result);
     options.onFixture?.(result);
   }
@@ -413,6 +465,7 @@ export async function runEval(options: EvalOptions = {}): Promise<EvalReport> {
     mode: options.mock ? "mock" : "live",
     fixturesDir,
     fixtures,
+    skipped,
     totals: totalsOf(fixtures),
   };
 }

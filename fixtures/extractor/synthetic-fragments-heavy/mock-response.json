@@ -10,6 +10,8 @@
         "top": 0.0525,
         "bottom": 0.1192
       },
+      "borderColorWord": "red",
+      "borderColor": "mythic",
       "gameTimestamp": "12.09.2026 - 21:48",
       "character": "Leftaltar",
       "direction": "deposit",
@@ -25,6 +27,8 @@
         "top": 0.1192,
         "bottom": 0.1859
       },
+      "borderColorWord": "red",
+      "borderColor": "mythic",
       "gameTimestamp": "12.09.2026 - 21:47",
       "character": "Leftaltar",
       "direction": "deposit",
@@ -40,6 +44,8 @@
         "top": 0.1859,
         "bottom": 0.2525
       },
+      "borderColorWord": "green",
+      "borderColor": "common",
       "gameTimestamp": "12.09.2026 - 21:47",
       "character": "Leftaltar",
       "direction": "deposit",
@@ -55,6 +61,8 @@
         "top": 0.2525,
         "bottom": 0.3192
       },
+      "borderColorWord": "red",
+      "borderColor": "mythic",
       "gameTimestamp": "12.09.2026 - 21:45",
       "character": "xReacher",
       "direction": "deposit",
@@ -70,6 +78,8 @@
         "top": 0.3192,
         "bottom": 0.3859
       },
+      "borderColorWord": "red",
+      "borderColor": "mythic",
       "gameTimestamp": "12.09.2026 - 21:44",
       "character": "xReacher",
       "direction": "deposit",
@@ -85,6 +95,8 @@
         "top": 0.3859,
         "bottom": 0.4525
       },
+      "borderColorWord": "red",
+      "borderColor": "mythic",
       "gameTimestamp": "12.09.2026 - 21:40",
       "character": "Leftaltar",
       "direction": "deposit",
@@ -100,6 +112,8 @@
         "top": 0.4525,
         "bottom": 0.5192
       },
+      "borderColorWord": "red",
+      "borderColor": "mythic",
       "gameTimestamp": "12.09.2026 - 21:39",
       "character": "xReacher",
       "direction": "deposit",
@@ -115,6 +129,8 @@
         "top": 0.5192,
         "bottom": 0.5859
       },
+      "borderColorWord": "red",
+      "borderColor": "mythic",
       "gameTimestamp": "12.09.2026 - 21:36",
       "character": "Leftaltar",
       "direction": "deposit",
@@ -130,6 +146,8 @@
         "top": 0.5859,
         "bottom": 0.6525
       },
+      "borderColorWord": "green",
+      "borderColor": "common",
       "gameTimestamp": "12.09.2026 - 21:35",
       "character": "Leftaltar",
       "direction": "deposit",
@@ -145,6 +163,8 @@
         "top": 0.6525,
         "bottom": 0.7192
       },
+      "borderColorWord": "red",
+      "borderColor": "mythic",
       "gameTimestamp": "12.09.2026 - 21:33",
       "character": "Leftaltar",
       "direction": "deposit",
@@ -160,6 +180,8 @@
         "top": 0.7192,
         "bottom": 0.7859
       },
+      "borderColorWord": "red",
+      "borderColor": "mythic",
       "gameTimestamp": "12.09.2026 - 21:31",
       "character": "Leftaltar",
       "direction": "deposit",
@@ -175,6 +197,8 @@
         "top": 0.7859,
         "bottom": 0.8525
       },
+      "borderColorWord": "red",
+      "borderColor": "mythic",
       "gameTimestamp": "12.09.2026 - 21:30",
       "character": "xReacher",
       "direction": "deposit",
@@ -190,6 +214,8 @@
         "top": 0.8525,
         "bottom": 0.9192
       },
+      "borderColorWord": "red",
+      "borderColor": "mythic",
       "gameTimestamp": "12.09.2026 - 21:28",
       "character": "xReacher",
       "direction": "deposit",
@@ -205,6 +231,8 @@
         "top": 0.9192,
         "bottom": 0.9859
       },
+      "borderColorWord": "red",
+      "borderColor": "mythic",
       "gameTimestamp": "12.09.2026 - 21:27",
       "character": "Leftaltar",
       "direction": "deposit",
