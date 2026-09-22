@@ -1,0 +1,210 @@
+{
+  "looksLikeBankLog": true,
+  "rows": [
+    {
+      "itemId": "purified-veltryn",
+      "iconDescription": "Synthetic fixture: drawn from the purified-veltryn reference icon.",
+      "quantity": "250",
+      "quantityText": "250",
+      "box": {
+        "top": 0.0606,
+        "bottom": 0.1375
+      },
+      "borderColorWord": "purple",
+      "borderColor": "rare",
+      "gameTimestamp": "15.09.2026 - 22:31",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "unknown",
+      "iconDescription": "Synthetic fixture: drawn from the Bright Veltryn icon (uncommon, blue border), which is not a tracked item.",
+      "quantity": "300",
+      "quantityText": "300",
+      "box": {
+        "top": 0.1375,
+        "bottom": 0.2145
+      },
+      "borderColorWord": "blue",
+      "borderColor": "uncommon",
+      "gameTimestamp": "15.09.2026 - 22:30",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "nyxium",
+      "iconDescription": "Synthetic fixture: drawn from the nyxium reference icon.",
+      "quantity": "",
+      "quantityText": "",
+      "box": {
+        "top": 0.2145,
+        "bottom": 0.2914
+      },
+      "borderColorWord": "purple",
+      "borderColor": "legendary",
+      "gameTimestamp": "15.09.2026 - 22:29",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "unknown",
+      "iconDescription": "Synthetic fixture: drawn from the Faded Veltryn icon (common, green border), which is not a tracked item.",
+      "quantity": "120",
+      "quantityText": "120",
+      "box": {
+        "top": 0.2914,
+        "bottom": 0.3683
+      },
+      "borderColorWord": "green",
+      "borderColor": "common",
+      "gameTimestamp": "15.09.2026 - 22:27",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "mithrilium",
+      "iconDescription": "Synthetic fixture: drawn from the mithrilium reference icon.",
+      "quantity": "100",
+      "quantityText": "100",
+      "box": {
+        "top": 0.3683,
+        "bottom": 0.4452
+      },
+      "borderColorWord": "purple",
+      "borderColor": "rare",
+      "gameTimestamp": "15.09.2026 - 22:26",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "unknown",
+      "iconDescription": "Synthetic fixture: drawn from the Adamantite Ingot icon (common, green border), which is not a tracked item.",
+      "quantity": "500",
+      "quantityText": "500",
+      "box": {
+        "top": 0.4452,
+        "bottom": 0.5221
+      },
+      "borderColorWord": "green",
+      "borderColor": "common",
+      "gameTimestamp": "15.09.2026 - 22:24",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "gold-ingot",
+      "iconDescription": "Synthetic fixture: drawn from the gold-ingot reference icon.",
+      "quantity": "112",
+      "quantityText": "112",
+      "box": {
+        "top": 0.5221,
+        "bottom": 0.5991
+      },
+      "borderColorWord": "green",
+      "borderColor": "common",
+      "gameTimestamp": "15.09.2026 - 22:22",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "fragment-necklace-of-starlight",
+      "iconDescription": "Synthetic fixture: drawn from the fragment-necklace-of-starlight reference icon.",
+      "quantity": "3",
+      "quantityText": "3",
+      "box": {
+        "top": 0.5991,
+        "bottom": 0.676
+      },
+      "borderColorWord": "red",
+      "borderColor": "mythic",
+      "gameTimestamp": "15.09.2026 - 22:20",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "silver-coin",
+      "iconDescription": "Synthetic fixture: drawn from the silver-coin reference icon.",
+      "quantity": "250,000,000",
+      "quantityText": "250,000,000",
+      "box": {
+        "top": 0.676,
+        "bottom": 0.7529
+      },
+      "borderColorWord": "",
+      "borderColor": "none",
+      "gameTimestamp": "15.09.2026 - 22:18",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "iron-ingot",
+      "iconDescription": "Synthetic fixture: drawn from the iron-ingot reference icon.",
+      "quantity": "1000",
+      "quantityText": "1000",
+      "box": {
+        "top": 0.7529,
+        "bottom": 0.8298
+      },
+      "borderColorWord": "green",
+      "borderColor": "common",
+      "gameTimestamp": "15.09.2026 - 22:15",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "unknown",
+      "iconDescription": "Synthetic fixture: drawn from the Bright Veltryn icon (uncommon, blue border), which is not a tracked item.",
+      "quantity": "40",
+      "quantityText": "40",
+      "box": {
+        "top": 0.8298,
+        "bottom": 0.9068
+      },
+      "borderColorWord": "blue",
+      "borderColor": "uncommon",
+      "gameTimestamp": "15.09.2026 - 22:13",
+      "character": "xReacher",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    },
+    {
+      "itemId": "obsidian",
+      "iconDescription": "Synthetic fixture: drawn from the obsidian reference icon.",
+      "quantity": "800",
+      "quantityText": "800",
+      "box": {
+        "top": 0.9068,
+        "bottom": 0.9837
+      },
+      "borderColorWord": "green",
+      "borderColor": "common",
+      "gameTimestamp": "15.09.2026 - 22:11",
+      "character": "Leftaltar",
+      "direction": "deposit",
+      "confidence": 0.97,
+      "lowConfidenceReason": ""
+    }
+  ],
+  "notes": []
+}

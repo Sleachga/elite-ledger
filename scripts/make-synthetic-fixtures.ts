@@ -8,15 +8,28 @@
  *   pnpm fixtures:extractor                    every fixture
  *   pnpm fixtures:extractor <name> [<name>]    only the named ones
  *
+ * Icons get the in-game rarity border from the catalog (`rarityBorderHex`);
+ * Silver Coin gets none, as in the log. Rows may use a decoy id from the
+ * catalog (an untracked lookalike with a different border): those are drawn
+ * with the decoy's art and border and expected as `unknown`.
+ *
  * The PNGs are committed: text rendering depends on the machine's fonts, and
  * the eval has to be deterministic. Re-run only to change the fixtures. These
  * approximate the game's layout from a description; real screenshots belong
- * next to them as soon as they exist.
+ * next to them as soon as they exist (`real-<name>/`, see the README).
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createCanvas, loadImage, type Image, type SKRSContext2D } from "@napi-rs/canvas";
-import { catalog, getItem, type CatalogItem, type Rarity } from "@/catalog";
+import {
+  catalog,
+  decoys,
+  rarityBorderHex,
+  rarityBorderWord,
+  type CatalogItem,
+  type DecoyItem,
+  type ItemKind,
+} from "@/catalog";
 
 const ROOT = path.join(process.cwd(), "fixtures", "extractor");
 const ICONS = path.join(process.cwd(), "public", "icons");
@@ -36,17 +49,22 @@ const COLORS = {
   gold: "#e8c25a",
 } as const;
 
-// In-game rarity border colours (approximate); not the site's Radix mapping.
-const RARITY_BORDER: Record<Rarity, string> = {
-  common: "#9ca3af",
-  uncommon: "#3ecf6e",
-  rare: "#3b82f6",
-  epic: "#a855f7",
-  legendary: "#f59e0b",
-  mythic: "#ef4444",
-};
+type Drawable = CatalogItem | DecoyItem;
+
+const REFERENCE = new Map<string, Drawable>([...catalog, ...decoys].map((item) => [item.id, item]));
+const isDecoy = (id: string): boolean => decoys.some((decoy) => decoy.id === id);
+
+function itemOf(id: string): Drawable {
+  const item = REFERENCE.get(id);
+  if (!item) throw new Error(`fixtures: unknown item id "${id}"`);
+  return item;
+}
+
+/** Decoys are materials for drawing purposes: overlay number, rarity border. */
+const kindOf = (item: Drawable): ItemKind => ("kind" in item ? item.kind : "material");
 
 interface LogRow {
+  /** A tracked item id or a decoy id. */
   itemId: string;
   /** As displayed: "112", "500,000,000", or "" for no overlay (a stack of 1). */
   shown: string;
@@ -67,9 +85,9 @@ interface LogFixture {
   /** Font size of the inline Silver Coin amount. The game prints it small; the first fixtures used 16. */
   amountPx?: number;
   /**
-   * Write the mock response without `quantityText` / `box`, the way the model
-   * answered before those fields existed, so `--mock` keeps exercising the
-   * lenient parse of older responses.
+   * Write the mock response without `quantityText` / `box` / `borderColor`,
+   * the way the model answered before those fields existed, so `--mock`
+   * keeps exercising the lenient parse of older responses.
    */
   legacyMock?: boolean;
 }
@@ -185,6 +203,29 @@ const FIXTURES: (LogFixture | InventoryFixture)[] = [
     ],
   },
   {
+    // Rarity is part of identity: the same art with a different border is a
+    // different item. Tracked rows with their real borders next to decoys
+    // that share the art (Bright / Faded Veltryn beside Purified Veltryn,
+    // Adamantite Ingot beside Mithrilium), all expected as `unknown`.
+    name: "synthetic-rarity-decoys",
+    kind: "log",
+    slot: 48,
+    rows: [
+      dep("purified-veltryn", "250", "15.09.2026 - 22:31", "Leftaltar"),
+      dep("bright-veltryn", "300", "15.09.2026 - 22:30", "Leftaltar"),
+      dep("nyxium", "", "15.09.2026 - 22:29", "xReacher"),
+      dep("faded-veltryn", "120", "15.09.2026 - 22:27", "Leftaltar"),
+      dep("mithrilium", "100", "15.09.2026 - 22:26", "xReacher"),
+      dep("adamantite-ingot", "500", "15.09.2026 - 22:24", "xReacher"),
+      dep("gold-ingot", "112", "15.09.2026 - 22:22", "Leftaltar"),
+      dep("fragment-necklace-of-starlight", "3", "15.09.2026 - 22:20", "Leftaltar"),
+      dep("silver-coin", "250,000,000", "15.09.2026 - 22:18", "xReacher"),
+      dep("iron-ingot", "1000", "15.09.2026 - 22:15", "Leftaltar"),
+      dep("bright-veltryn", "40", "15.09.2026 - 22:13", "xReacher"),
+      dep("obsidian", "800", "15.09.2026 - 22:11", "Leftaltar"),
+    ],
+  },
+  {
     // A wrong upload: an inventory window, not the bank log.
     name: "synthetic-not-a-bank-log",
     kind: "inventory",
@@ -201,7 +242,7 @@ const FIXTURES: (LogFixture | InventoryFixture)[] = [
 ];
 
 const iconImages = new Map<string, Promise<Image>>();
-function iconOf(item: CatalogItem): Promise<Image> {
+function iconOf(item: Drawable): Promise<Image> {
   let image = iconImages.get(item.icon);
   if (!image) {
     image = loadImage(path.join(ICONS, item.icon));
@@ -212,7 +253,7 @@ function iconOf(item: CatalogItem): Promise<Image> {
 
 async function drawSlot(
   ctx: SKRSContext2D,
-  item: CatalogItem,
+  item: Drawable,
   x: number,
   y: number,
   size: number,
@@ -229,9 +270,12 @@ async function drawSlot(
   const h = image.height * scale;
   ctx.drawImage(image, x + (size - w) / 2, y + (size - h) / 2, w, h);
 
-  ctx.strokeStyle = RARITY_BORDER[item.rarity];
-  ctx.lineWidth = 2;
-  ctx.strokeRect(x + 1, y + 1, size - 2, size - 2);
+  // The in-game border; Silver Coin has none.
+  if (kindOf(item) !== "currency") {
+    ctx.strokeStyle = rarityBorderHex[item.rarity];
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, size - 2, size - 2);
+  }
 
   if (overlay !== "") {
     ctx.font = `bold 13px ${FONT}`;
@@ -291,7 +335,7 @@ async function drawLog(fixture: LogFixture): Promise<Buffer> {
   ctx.fillText("Log", 124, headerHeight / 2 + 1);
 
   for (const [index, row] of fixture.rows.entries()) {
-    const item = getItem(row.itemId);
+    const item = itemOf(row.itemId);
     const top = headerHeight + index * rowHeight;
     const middle = top + rowHeight / 2;
     ctx.fillStyle = index % 2 === 0 ? COLORS.rowA : COLORS.rowB;
@@ -300,7 +344,7 @@ async function drawLog(fixture: LogFixture): Promise<Buffer> {
     drawArrow(ctx, 34, middle, row.direction);
 
     // Currency prints its amount inline in gold; everything else overlays it.
-    const inline = item.kind === "currency";
+    const inline = kindOf(item) === "currency";
     // 50px slots keep the first fixtures' 5px art padding; 48px ones fill the slot like the game.
     await drawSlot(
       ctx,
@@ -362,7 +406,7 @@ async function drawInventory(fixture: InventoryFixture): Promise<Buffer> {
     const y = headerHeight + 16 + Math.floor(index / columns) * (slot + gap);
     const filled = fixture.slots[index];
     if (filled) {
-      await drawSlot(ctx, getItem(filled.itemId), x, y, slot, filled.shown);
+      await drawSlot(ctx, itemOf(filled.itemId), x, y, slot, filled.shown);
     } else {
       ctx.fillStyle = COLORS.slot;
       ctx.fillRect(x, y, slot, slot);
@@ -382,6 +426,29 @@ async function drawInventory(fixture: InventoryFixture): Promise<Buffer> {
 }
 
 const digits = (shown: string) => (shown === "" ? "1" : shown.replace(/\D/g, ""));
+
+/** The model's answer for a row: what a decoy row is, and what border it saw. */
+function mockRow(fixture: LogFixture, row: LogRow, index: number) {
+  const item = itemOf(row.itemId);
+  const decoy = isDecoy(row.itemId);
+  const currency = kindOf(item) === "currency";
+  const border = currency
+    ? { borderColorWord: "", borderColor: "none" }
+    : { borderColorWord: rarityBorderWord(item.rarity), borderColor: item.rarity };
+  return {
+    itemId: decoy ? "unknown" : row.itemId,
+    iconDescription: decoy
+      ? `Synthetic fixture: drawn from the ${item.name} icon (${item.rarity}, ${border.borderColorWord} border), which is not a tracked item.`
+      : `Synthetic fixture: drawn from the ${row.itemId} reference icon.`,
+    quantity: row.shown,
+    ...(fixture.legacyMock ? {} : { quantityText: row.shown, box: rowBox(fixture, index), ...border }),
+    gameTimestamp: row.gameTimestamp,
+    character: row.character,
+    direction: row.direction,
+    confidence: 0.97,
+    lowConfidenceReason: "",
+  };
+}
 
 async function writeJson(file: string, value: unknown) {
   await writeFile(file, `${JSON.stringify(value, null, 2)}\n`);
@@ -413,10 +480,11 @@ async function main() {
           row.direction === "deposit"
             ? [
                 {
-                  itemId: row.itemId,
+                  itemId: isDecoy(row.itemId) ? "unknown" : row.itemId,
                   quantity: digits(row.shown),
                   gameTimestamp: row.gameTimestamp,
                   character: row.character,
+                  ...(isDecoy(row.itemId) ? { decoy: row.itemId } : {}),
                   ...(fixture.legacyMock ? {} : { box: rowBox(fixture, index) }),
                 },
               ]
@@ -425,17 +493,7 @@ async function main() {
       });
       await writeJson(path.join(dir, "mock-response.json"), {
         looksLikeBankLog: true,
-        rows: fixture.rows.map((row, index) => ({
-          itemId: row.itemId,
-          iconDescription: `Synthetic fixture: drawn from the ${row.itemId} reference icon.`,
-          quantity: row.shown,
-          ...(fixture.legacyMock ? {} : { quantityText: row.shown, box: rowBox(fixture, index) }),
-          gameTimestamp: row.gameTimestamp,
-          character: row.character,
-          direction: row.direction,
-          confidence: 0.97,
-          lowConfidenceReason: "",
-        })),
+        rows: fixture.rows.map((row, index) => mockRow(fixture, row, index)),
         notes: [],
       });
     }

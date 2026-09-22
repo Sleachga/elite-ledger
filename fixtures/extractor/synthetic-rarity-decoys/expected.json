@@ -1,0 +1,129 @@
+{
+  "looksLikeBankLog": true,
+  "rows": [
+    {
+      "itemId": "purified-veltryn",
+      "quantity": "250",
+      "gameTimestamp": "15.09.2026 - 22:31",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.0606,
+        "bottom": 0.1375
+      }
+    },
+    {
+      "itemId": "unknown",
+      "quantity": "300",
+      "gameTimestamp": "15.09.2026 - 22:30",
+      "character": "Leftaltar",
+      "decoy": "bright-veltryn",
+      "box": {
+        "top": 0.1375,
+        "bottom": 0.2145
+      }
+    },
+    {
+      "itemId": "nyxium",
+      "quantity": "1",
+      "gameTimestamp": "15.09.2026 - 22:29",
+      "character": "xReacher",
+      "box": {
+        "top": 0.2145,
+        "bottom": 0.2914
+      }
+    },
+    {
+      "itemId": "unknown",
+      "quantity": "120",
+      "gameTimestamp": "15.09.2026 - 22:27",
+      "character": "Leftaltar",
+      "decoy": "faded-veltryn",
+      "box": {
+        "top": 0.2914,
+        "bottom": 0.3683
+      }
+    },
+    {
+      "itemId": "mithrilium",
+      "quantity": "100",
+      "gameTimestamp": "15.09.2026 - 22:26",
+      "character": "xReacher",
+      "box": {
+        "top": 0.3683,
+        "bottom": 0.4452
+      }
+    },
+    {
+      "itemId": "unknown",
+      "quantity": "500",
+      "gameTimestamp": "15.09.2026 - 22:24",
+      "character": "xReacher",
+      "decoy": "adamantite-ingot",
+      "box": {
+        "top": 0.4452,
+        "bottom": 0.5221
+      }
+    },
+    {
+      "itemId": "gold-ingot",
+      "quantity": "112",
+      "gameTimestamp": "15.09.2026 - 22:22",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.5221,
+        "bottom": 0.5991
+      }
+    },
+    {
+      "itemId": "fragment-necklace-of-starlight",
+      "quantity": "3",
+      "gameTimestamp": "15.09.2026 - 22:20",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.5991,
+        "bottom": 0.676
+      }
+    },
+    {
+      "itemId": "silver-coin",
+      "quantity": "250000000",
+      "gameTimestamp": "15.09.2026 - 22:18",
+      "character": "xReacher",
+      "box": {
+        "top": 0.676,
+        "bottom": 0.7529
+      }
+    },
+    {
+      "itemId": "iron-ingot",
+      "quantity": "1000",
+      "gameTimestamp": "15.09.2026 - 22:15",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.7529,
+        "bottom": 0.8298
+      }
+    },
+    {
+      "itemId": "unknown",
+      "quantity": "40",
+      "gameTimestamp": "15.09.2026 - 22:13",
+      "character": "xReacher",
+      "decoy": "bright-veltryn",
+      "box": {
+        "top": 0.8298,
+        "bottom": 0.9068
+      }
+    },
+    {
+      "itemId": "obsidian",
+      "quantity": "800",
+      "gameTimestamp": "15.09.2026 - 22:11",
+      "character": "Leftaltar",
+      "box": {
+        "top": 0.9068,
+        "bottom": 0.9837
+      }
+    }
+  ]
+}

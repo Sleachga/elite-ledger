@@ -1,9 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import sharp from "sharp";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { catalog } from "@/catalog";
+import { catalog, decoys } from "@/catalog";
 import { ExtractorError, extract, type ExtractorClient } from "./index";
 import { normalizeQuantity } from "./normalize";
+import { DECOY_LABEL_PREFIX } from "./prompt";
+import { REFERENCE_ICON_SIZE } from "./reference-icons";
+import { BORDER_COLORS } from "./schema";
 import { fakeClient, fakeMessage } from "./testing";
 
 // extract() never decodes the screenshot itself, so any bytes will do.
@@ -347,18 +350,29 @@ describe("extract: request shape", () => {
     expect(fromDeps.request.output_config?.effort).toBe("high");
   });
 
-  it("puts every labelled reference icon before the screenshot, cache breakpoint on the last", async () => {
+  it("puts every labelled reference icon before the screenshot, tracked then decoys, cache breakpoint on the last", async () => {
     const { content } = await requestFor({}, ["Leftaltar"]);
     const images = content.flatMap((block, index) => (block.type === "image" ? [index] : []));
 
-    // One image per tracked item, then the screenshot.
-    expect(images).toHaveLength(catalog.length + 1);
+    // One image per tracked item, one per decoy, then the screenshot.
+    expect(decoys.length).toBeGreaterThan(0);
+    expect(images).toHaveLength(catalog.length + decoys.length + 1);
     const screenshotIndex = images[images.length - 1];
     const lastIconIndex = images[images.length - 2];
 
-    catalog.forEach((item, position) => {
+    const labelOf = (position: number) => {
       const label = content[images[position] - 1];
-      expect(label.type === "text" && label.text).toContain(`id: ${item.id},`);
+      return label.type === "text" ? label.text : "";
+    };
+    catalog.forEach((item, position) => {
+      expect(labelOf(position)).toContain(`id: ${item.id},`);
+      expect(labelOf(position)).not.toContain(DECOY_LABEL_PREFIX);
+    });
+    decoys.forEach((decoy, position) => {
+      const label = labelOf(catalog.length + position);
+      expect(label).toContain(`${DECOY_LABEL_PREFIX} ${decoy.name} (${decoy.rarity}, `);
+      expect(label).toMatch(/ border\)\./);
+      expect(label).toContain('"unknown"');
     });
 
     const breakpoints = content.flatMap((block, index) =>
@@ -378,12 +392,49 @@ describe("extract: request shape", () => {
     expect(ask.type === "text" && ask.text).toContain("Leftaltar");
   });
 
-  it("limits itemId to the catalog ids plus unknown in the output schema", async () => {
+  it("limits itemId to the catalog ids plus unknown in the output schema, never a decoy id", async () => {
     const { request } = await requestFor();
     const schema = JSON.stringify(request.output_config?.format?.schema);
     const ids = [...catalog.map((item) => item.id), "unknown"];
 
     expect(schema).toContain(JSON.stringify(ids));
+    for (const decoy of decoys) expect(schema).not.toContain(`"${decoy.id}"`);
+  });
+
+  it("labels each reference with its border colour and sends the bordered icon", async () => {
+    const { content } = await requestFor();
+    const labels = content.flatMap((block) => (block.type === "text" ? [block.text] : []));
+
+    expect(labels.find((text) => text.includes("id: gold-ingot,"))).toMatch(/rarity: common \(green border\)/);
+    expect(labels.find((text) => text.includes("id: nyxium,"))).toMatch(/purple border/);
+    expect(labels.find((text) => text.includes("id: fragment-ring-of-night,"))).toMatch(/red border/);
+    expect(labels.find((text) => text.includes("id: silver-coin,"))).toMatch(/no border/);
+
+    // The references are the 96px bordered icons from public/icons/ref, not the bare codex PNGs.
+    const first = content.find((block) => block.type === "image");
+    const data = first?.type === "image" && first.source.type === "base64" ? first.source.data : "";
+    const meta = await sharp(Buffer.from(data, "base64")).metadata();
+    expect([meta.width, meta.height]).toEqual([REFERENCE_ICON_SIZE, REFERENCE_ICON_SIZE]);
+  });
+
+  it("sends no decoy references when given an empty list", async () => {
+    const { content } = await requestFor({ decoys: [] });
+    const images = content.filter((block) => block.type === "image");
+    const labels = content.flatMap((block) => (block.type === "text" ? [block.text] : []));
+
+    expect(images).toHaveLength(catalog.length + 1);
+    expect(labels.some((text) => text.includes(DECOY_LABEL_PREFIX))).toBe(false);
+  });
+
+  it("explains in the system prompt that identity is art and border, with the colour legend", async () => {
+    const { request } = await requestFor();
+    const system = typeof request.system === "string" ? request.system : JSON.stringify(request.system);
+
+    expect(system).toMatch(/artwork AND its border colour/);
+    expect(system).toContain("green = common");
+    expect(system).toContain("purple = rare or legendary");
+    expect(system).toContain("red = mythic");
+    expect(system).toMatch(/NOT tracked/);
   });
 
   it("opts into server-side refusal fallbacks for claude-opus-5 only, unless told otherwise", async () => {
@@ -444,9 +495,16 @@ describe("extract: request shape", () => {
     };
     const fields = Object.keys(schema.properties.rows.items.properties);
 
-    expect(schema.properties.rows.items.required).toEqual(expect.arrayContaining(["box", "quantityText"]));
-    expect(fields.indexOf("iconDescription")).toBeLessThan(fields.indexOf("itemId"));
+    expect(schema.properties.rows.items.required).toEqual(
+      expect.arrayContaining(["box", "quantityText", "borderColorWord", "borderColor"]),
+    );
+    // Look, describe, read the border, and only then decide the id.
+    expect(fields.indexOf("iconDescription")).toBeLessThan(fields.indexOf("borderColorWord"));
+    expect(fields.indexOf("borderColorWord")).toBeLessThan(fields.indexOf("borderColor"));
+    expect(fields.indexOf("borderColor")).toBeLessThan(fields.indexOf("itemId"));
     expect(fields.indexOf("quantityText")).toBeLessThan(fields.indexOf("quantity"));
+    const borderColor = schema.properties.rows.items.properties.borderColor as { enum: string[] };
+    expect(borderColor.enum).toEqual([...BORDER_COLORS]);
   });
 
   it("labels each fragment with what sets its jewelry apart", async () => {
