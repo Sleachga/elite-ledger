@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The extractor is mocked: no Anthropic client is ever built and no request is made.
 vi.mock("@/modules/extractor", async (importOriginal) => ({
@@ -6,13 +6,35 @@ vi.mock("@/modules/extractor", async (importOriginal) => ({
   extract: vi.fn(),
 }));
 
+// The app's database is an in-memory PGlite: the route reads the real settings table.
+const memory = vi.hoisted(() => ({ db: undefined as unknown }));
+vi.mock("@/db", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/db")>()),
+  getDb: async () => memory.db,
+}));
+
+import { createDb, type DbHandle } from "@/db";
+import { settings as settingsTable } from "@/db/schema";
 import { ExtractorError, extract, type ExtractionResult } from "@/modules/extractor";
 import { MAX_IMAGE_BYTES } from "@/modules/playground";
 import { MAX_BATCH_IMAGES, interpretResponse } from "@/modules/playground/queue";
+import { invalidateSettingsCache, updateSettings } from "@/modules/settings";
 import { RATE_LIMIT, resetRateLimit } from "./handler";
 import { GET, POST } from "./route";
 
 const extractMock = vi.mocked(extract);
+
+let handle: DbHandle;
+
+beforeAll(async () => {
+  handle = await createDb({ memory: true });
+  await handle.migrate();
+  memory.db = handle.db;
+}, 60_000);
+
+afterAll(async () => {
+  await handle?.close();
+});
 
 const PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
 const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
@@ -62,13 +84,16 @@ async function errorOf(response: Response): Promise<{ kind: string; message: str
   return body.error;
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.stubEnv("TRY_PASSCODE", "");
   vi.stubEnv("VERCEL", "");
   vi.spyOn(console, "error").mockImplementation(() => {});
   extractMock.mockReset();
   extractMock.mockResolvedValue(RESULT);
   resetRateLimit();
+  // Every test starts from the defaults: AI on, default mode AI.
+  await handle.db.delete(settingsTable);
+  invalidateSettingsCache();
 });
 
 afterEach(() => {
@@ -76,22 +101,110 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/** Flip admin settings the way the admin route does. */
+function adminSets(patch: Parameters<typeof updateSettings>[0]) {
+  return updateSettings(patch, { updatedBy: "test" });
+}
+
 describe("GET /api/try-extract", () => {
   it("is open locally when no passcode is set", async () => {
-    const response = GET();
+    const response = await GET();
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ passcodeRequired: false, enabled: true });
+    expect(await response.json()).toEqual({
+      passcodeRequired: false,
+      enabled: true,
+      aiEnabled: true,
+      defaultMode: "ai",
+    });
+    expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
   it("asks for a passcode when TRY_PASSCODE is set", async () => {
     vi.stubEnv("TRY_PASSCODE", "open-sesame");
     vi.stubEnv("VERCEL", "1");
-    expect(await GET().json()).toEqual({ passcodeRequired: true, enabled: true });
+    expect(await (await GET()).json()).toMatchObject({ passcodeRequired: true, enabled: true });
   });
 
   it("reports disabled on Vercel without a passcode", async () => {
     vi.stubEnv("VERCEL", "1");
-    expect(await GET().json()).toEqual({ passcodeRequired: false, enabled: false });
+    expect(await (await GET()).json()).toMatchObject({ passcodeRequired: false, enabled: false });
+  });
+
+  it("reports the admin's upload-mode settings", async () => {
+    await adminSets({ aiExtractionEnabled: false, defaultUploadMode: "manual" });
+    expect(await (await GET()).json()).toEqual({
+      passcodeRequired: false,
+      enabled: true,
+      aiEnabled: false,
+      defaultMode: "manual",
+    });
+
+    // Switched back on: the very next answer says so (the save drops the cache).
+    await adminSets({ aiExtractionEnabled: true });
+    expect(await (await GET()).json()).toMatchObject({ aiEnabled: true, defaultMode: "manual" });
+  });
+});
+
+describe("POST /api/try-extract with AI reading switched off", () => {
+  beforeEach(async () => {
+    await adminSets({ aiExtractionEnabled: false });
+  });
+
+  it("refuses with 403 ai_disabled and never calls the extractor", async () => {
+    const response = await post();
+    expect(response.status).toBe(403);
+    const error = await errorOf(response);
+    expect(error.kind).toBe("ai_disabled");
+    expect(error.message).toContain("switched off");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(extractMock).not.toHaveBeenCalled();
+    // The page reads that answer as "go manual", not as a failed image.
+    expect(interpretResponse(403, { error }, null, Date.now())).toEqual({ type: "ai_disabled" });
+  });
+
+  it("refuses whatever the passcode", async () => {
+    vi.stubEnv("TRY_PASSCODE", "open-sesame");
+    expect((await post({ passcode: "open-sesame" })).status).toBe(403);
+    expect((await post({ passcode: "wrong" })).status).toBe(403);
+    expect((await post()).status).toBe(403);
+    expect(extractMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses before the rate limiter: refused calls take no slot", async () => {
+    for (let index = 0; index < RATE_LIMIT.limit + 5; index += 1) {
+      expect((await post({ ip: "203.0.113.20" })).status).toBe(403);
+    }
+    // Back on: the same client still has its whole window.
+    await adminSets({ aiExtractionEnabled: true });
+    for (let index = 0; index < RATE_LIMIT.limit; index += 1) {
+      expect((await post({ ip: "203.0.113.20" })).status).toBe(200);
+    }
+    expect((await post({ ip: "203.0.113.20" })).status).toBe(429);
+    expect(extractMock).toHaveBeenCalledTimes(RATE_LIMIT.limit);
+  });
+
+  it("refuses before looking at the body", async () => {
+    const response = await POST(
+      new Request("http://localhost/api/try-extract", {
+        method: "POST",
+        body: JSON.stringify({ image: "nope" }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(response.status).toBe(403);
+  });
+
+  it("still answers 503 first when the playground itself is off on this deployment", async () => {
+    vi.stubEnv("VERCEL", "1");
+    const response = await post();
+    expect(response.status).toBe(503);
+    expect((await errorOf(response)).kind).toBe("disabled");
+  });
+
+  it("the default mode alone does not gate anything", async () => {
+    await adminSets({ aiExtractionEnabled: true, defaultUploadMode: "manual" });
+    expect((await post()).status).toBe(200);
+    expect(extractMock).toHaveBeenCalledTimes(1);
   });
 });
 

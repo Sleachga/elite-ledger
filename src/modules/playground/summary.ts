@@ -102,7 +102,9 @@ export interface BatchSummary {
   reading: number;
   queued: number;
   canceled: number;
-  /** done + failed + canceled: nothing more will happen to these on its own. */
+  /** Manual entries: nothing is read, the member types the rows. */
+  ready: number;
+  /** done + failed + canceled + ready: nothing more will happen to these on its own. */
   settled: number;
   /** Deposit rows across finished images. */
   rows: number;
@@ -122,6 +124,7 @@ export function summarize(entries: readonly QueueEntry[]): BatchSummary {
     reading: 0,
     queued: 0,
     canceled: 0,
+    ready: 0,
     settled: 0,
     rows: 0,
     lowConfidenceRows: 0,
@@ -140,6 +143,6 @@ export function summarize(entries: readonly QueueEntry[]): BatchSummary {
     if (!result.looksLikeBankLog) summary.notBankLog += 1;
     summary.durationMs += Number.isFinite(durationMs) ? Math.max(0, durationMs) : 0;
   }
-  summary.settled = summary.done + summary.failed + summary.canceled;
+  summary.settled = summary.done + summary.failed + summary.canceled + summary.ready;
   return summary;
 }

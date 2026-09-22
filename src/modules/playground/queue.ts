@@ -3,6 +3,12 @@
  * each, at most `QUEUE_CONCURRENCY` in flight. The React component only
  * dispatches actions and performs the fetches that `pickStartable` hands it.
  *
+ * An entry is either read by the extractor (the default) or `manual`: the image
+ * stays in the browser as a reference, the entry is "ready" at once with no
+ * rows, and the member types them. A manual entry is never handed out by
+ * `pickStartable`, so nothing about it can reach the server. The mode only
+ * decides what new images become; entries already in the batch keep their kind.
+ *
  * Browser-safe and side-effect free: no `Date.now()`, no object URLs, no ids
  * made here. The caller supplies them, so every transition is testable.
  */
@@ -12,6 +18,7 @@ import {
   type PlaygroundErrorKind,
   type PlaygroundSuccessBody,
 } from "./index";
+import type { UploadMode } from "./mode";
 
 /** Requests in flight at once. Two keeps a 20-image batch moving without tripping API limits. */
 export const QUEUE_CONCURRENCY = 2;
@@ -28,7 +35,11 @@ export interface QueueFile {
   lastModified: number;
 }
 
-export type EntryState = "queued" | "reading" | "done" | "failed" | "canceled";
+/** "ready": a manual entry, waiting for rows typed by hand. It never becomes anything else. */
+export type EntryState = "queued" | "reading" | "done" | "failed" | "canceled" | "ready";
+
+/** The name of the one manual entry that has no screenshot. */
+export const BLANK_ENTRY_NAME = "Manual entry";
 
 export interface EntryError {
   kind: string;
@@ -46,9 +57,13 @@ export interface QueueEntry<F extends QueueFile = QueueFile> {
   /** Object URL for the thumbnail and preview; the component creates and revokes it. */
   previewUrl: string | null;
   state: EntryState;
+  /** Absent: read by the extractor. "manual": rows are typed by hand, nothing is sent. */
+  kind?: "manual";
+  /** A manual entry without a screenshot; `file` is an empty placeholder named `BLANK_ENTRY_NAME`. */
+  blank?: boolean;
   /** When the current read started (ms epoch). */
   startedAt?: number;
-  /** When it reached `done` or `failed`. */
+  /** When it reached `done`, `failed` or `ready`. */
   finishedAt?: number;
   body?: PlaygroundSuccessBody;
   error?: EntryError;
@@ -67,7 +82,16 @@ export interface NewEntry<F extends QueueFile = QueueFile> {
 }
 
 export type QueueAction<F extends QueueFile = QueueFile> =
-  | { type: "enqueue"; items: readonly NewEntry<F>[]; now: number }
+  /** `mode` "manual": valid images become ready manual entries instead of joining the line. Default "ai". */
+  | { type: "enqueue"; items: readonly NewEntry<F>[]; now: number; mode?: UploadMode }
+  /** The manual entry without a screenshot. There is only ever one; it does not count toward the image cap. */
+  | { type: "addBlank"; item: NewEntry<F>; now: number }
+  /**
+   * Hand entries over to the member: with `id`, that entry if it has no result
+   * (queued, reading, failed, canceled); without, every entry still waiting or
+   * in flight (AI reading was switched off under the batch).
+   */
+  | { type: "toManual"; id?: string; now: number }
   | { type: "start"; id: string; now: number }
   | { type: "succeed"; id: string; body: PlaygroundSuccessBody; now: number }
   | { type: "fail"; id: string; error: EntryError; now: number }
@@ -85,7 +109,7 @@ export function initialQueueState<F extends QueueFile = QueueFile>(): QueueState
   return { entries: [], paused: false };
 }
 
-const NOT_RETRYABLE: readonly string[] = ["bad_request", "too_large", "disabled"];
+const NOT_RETRYABLE: readonly string[] = ["bad_request", "too_large", "disabled", "ai_disabled"];
 
 /** Whether sending the same file again could succeed. */
 export function isRetryableKind(kind: string): boolean {
@@ -99,6 +123,34 @@ function canRetry(entry: QueueEntry): boolean {
 
 function requeued<F extends QueueFile>(entry: QueueEntry<F>): QueueEntry<F> {
   return { id: entry.id, file: entry.file, previewUrl: entry.previewUrl, state: "queued" };
+}
+
+function manualEntry<F extends QueueFile>(item: NewEntry<F>, now: number): QueueEntry<F> {
+  return { id: item.id, file: item.file, previewUrl: item.previewUrl, state: "ready", kind: "manual", finishedAt: now };
+}
+
+export function isManualEntry(entry: Pick<QueueEntry, "kind">): boolean {
+  return entry.kind === "manual";
+}
+
+/**
+ * Whether "Add rows by hand" makes sense for an entry: it has no result yet
+ * (waiting, in flight, canceled, or a read that failed) and its file is one the
+ * app accepts. A file that failed validation stays failed in either mode.
+ */
+export function canGoManual(entry: QueueEntry): boolean {
+  if (entry.state === "done" || entry.state === "ready") return false;
+  return validateImageFile(entry.file) === null;
+}
+
+/** Entries that are images: everything but the no-screenshot manual entry. The batch cap counts these. */
+export function imageEntries<E extends Pick<QueueEntry, "blank">>(entries: readonly E[]): E[] {
+  return entries.filter((entry) => !entry.blank);
+}
+
+/** The no-screenshot manual entry, if the batch has one. */
+export function blankEntryId(entries: readonly Pick<QueueEntry, "id" | "blank">[]): string | null {
+  return entries.find((entry) => entry.blank)?.id ?? null;
 }
 
 function mapEntry<F extends QueueFile>(
@@ -123,16 +175,20 @@ export function queueReducer<F extends QueueFile = QueueFile>(
   switch (action.type) {
     case "enqueue": {
       const known = new Set(state.entries.map((entry) => entry.id));
+      const images = imageEntries(state.entries).length;
       const added: QueueEntry<F>[] = [];
       for (const item of action.items) {
         // The cap holds here too, whatever the caller planned.
-        if (state.entries.length + added.length >= MAX_BATCH_IMAGES) break;
+        if (images + added.length >= MAX_BATCH_IMAGES) break;
         if (known.has(item.id)) continue;
         known.add(item.id);
+        // Same file rules in both modes: what is kept as evidence must be an image the app accepts.
         const problem = validateImageFile(item.file);
         added.push(
           problem === null
-            ? { ...item, state: "queued" }
+            ? action.mode === "manual"
+              ? manualEntry(item, action.now)
+              : { ...item, state: "queued" }
             : {
                 ...item,
                 state: "failed",
@@ -142,6 +198,25 @@ export function queueReducer<F extends QueueFile = QueueFile>(
         );
       }
       return added.length === 0 ? state : { ...state, entries: [...state.entries, ...added] };
+    }
+
+    case "addBlank": {
+      if (state.entries.some((entry) => entry.blank || entry.id === action.item.id)) return state;
+      // No screenshot: nothing to validate, nothing to preview.
+      const entry: QueueEntry<F> = { ...manualEntry({ ...action.item, previewUrl: null }, action.now), blank: true };
+      return { ...state, entries: [...state.entries, entry] };
+    }
+
+    case "toManual": {
+      const convertible = (entry: QueueEntry<F>) =>
+        action.id === undefined
+          ? entry.state === "queued" || entry.state === "reading"
+          : entry.id === action.id && canGoManual(entry);
+      if (!state.entries.some(convertible)) return state;
+      return {
+        ...state,
+        entries: state.entries.map((entry) => (convertible(entry) ? manualEntry(entry, action.now) : entry)),
+      };
     }
 
     case "start":
@@ -244,7 +319,8 @@ export function canRetryEntry(entry: QueueEntry): boolean {
 export function autoSelectId(entries: readonly QueueEntry[], fallbackToFirst = true): string | null {
   let first: QueueEntry | null = null;
   for (const entry of entries) {
-    if (entry.state !== "done" || entry.finishedAt === undefined) continue;
+    // A manual entry is ready for its rows the moment it is added.
+    if ((entry.state !== "done" && entry.state !== "ready") || entry.finishedAt === undefined) continue;
     if (first === null || entry.finishedAt < (first.finishedAt ?? Infinity)) first = entry;
   }
   return first?.id ?? (fallbackToFirst ? (entries[0]?.id ?? null) : null);
@@ -354,6 +430,8 @@ function errorBodyOf(body: unknown): { kind: string; message?: string } | null {
 export type RequestOutcome =
   | { type: "success"; body: PlaygroundSuccessBody }
   | { type: "unauthorized" }
+  /** 403 `ai_disabled`: an admin switched AI reading off. The page goes manual. */
+  | { type: "ai_disabled" }
   | { type: "failure"; error: EntryError };
 
 const HOST_413 =
@@ -372,6 +450,7 @@ export function interpretResponse(
   const error = errorBodyOf(body);
   if (error) {
     if (error.kind === "unauthorized") return { type: "unauthorized" };
+    if (error.kind === "ai_disabled") return { type: "ai_disabled" };
     return {
       type: "failure",
       error: {

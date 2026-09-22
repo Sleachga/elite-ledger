@@ -3,7 +3,7 @@
 import NextLink from "next/link";
 import { usePathname } from "next/navigation";
 import { Box, Button, Container, Flex, Link } from "@radix-ui/themes";
-import { isActivePath, TOP_NAV, UPLOAD_HREF } from "./nav";
+import { ADMIN_HREF, isActivePath, TOP_NAV, UPLOAD_HREF } from "./nav";
 import { Wordmark } from "./Wordmark";
 
 export function TopBar({ guildName }: { guildName: string }) {
@@ -50,11 +50,17 @@ export function TopBar({ guildName }: { guildName: string }) {
               </nav>
             </Flex>
 
-            <Box display={{ initial: "none", sm: "block" }}>
+            <Flex align="center" gap="4" display={{ initial: "none", sm: "flex" }}>
+              {/* Until there is an avatar menu (Discord login), Admin sits here, small and quiet. */}
+              <Button asChild size="1" variant="ghost" color="gray" highContrast={isActivePath(pathname, ADMIN_HREF)}>
+                <NextLink href={ADMIN_HREF} aria-current={isActivePath(pathname, ADMIN_HREF) ? "page" : undefined}>
+                  Admin
+                </NextLink>
+              </Button>
               <Button asChild size="2">
                 <NextLink href={UPLOAD_HREF}>Upload</NextLink>
               </Button>
-            </Box>
+            </Flex>
           </Flex>
         </Container>
       </header>

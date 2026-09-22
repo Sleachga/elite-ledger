@@ -6,6 +6,7 @@
  */
 import type { ExtractionResult, ExtractorErrorKind, ImageMediaType, ParsedRow } from "@/modules/extractor";
 import { formatQty } from "@/lib/format";
+import type { UploadMode } from "./mode";
 
 export const TRY_EXTRACT_ENDPOINT = "/api/try-extract";
 export const PASSCODE_HEADER = "x-try-passcode";
@@ -29,6 +30,7 @@ export type PlaygroundErrorKind =
   | "too_large"
   | "unauthorized"
   | "disabled"
+  | "ai_disabled"
   | "too_many_requests";
 
 export interface PlaygroundErrorBody {
@@ -40,9 +42,15 @@ export interface PlaygroundSuccessBody {
   durationMs: number;
 }
 
+/** `GET /api/try-extract`: what the page needs to know before it sends anything. */
 export interface PlaygroundStatusBody {
   passcodeRequired: boolean;
+  /** false: deployed without `TRY_PASSCODE`, so the endpoint answers 503. */
   enabled: boolean;
+  /** The admin setting `aiExtractionEnabled`; false: the endpoint answers 403 `ai_disabled`. */
+  aiEnabled: boolean;
+  /** The admin setting `defaultUploadMode`. */
+  defaultMode: UploadMode;
 }
 
 const ERROR_TEXT: Record<PlaygroundErrorKind, string> = {
@@ -56,6 +64,7 @@ const ERROR_TEXT: Record<PlaygroundErrorKind, string> = {
   too_large: "That image is too large. The limit is 10 MB.",
   unauthorized: "Wrong or missing passcode.",
   disabled: "The playground is switched off on this deployment.",
+  ai_disabled: "AI reading is switched off by an admin. Add rows by hand.",
   too_many_requests: "Too many tries from this connection. Wait a few minutes.",
 };
 

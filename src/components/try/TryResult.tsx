@@ -6,7 +6,7 @@ import { findItem } from "@/catalog";
 import { ItemChip, UnknownItemChip } from "@/components/ItemChip";
 import { formatQty } from "@/lib/format";
 import type { ExtractionResult, ParsedRow } from "@/modules/extractor";
-import { totalsByItem } from "@/modules/playground";
+import { totalsByItem, type ItemTotal } from "@/modules/playground";
 import {
   correctedRows,
   reviewCounts,
@@ -92,6 +92,120 @@ export function ToCheckBadge({ rows, toCheck, size = "1" }: { rows: number; toCh
   );
 }
 
+function TotalsSection({ title, totals }: { title: string; totals: ItemTotal[] }) {
+  if (totals.length === 0) return null;
+  return (
+    <Section title={title}>
+      <Card size="1">
+        <Grid columns={{ initial: "1", sm: "2" }} gapX="6" gapY="2">
+          {totals.map((total) => (
+            <Flex key={total.itemId} align="center" justify="between" gap="3" minWidth="0">
+              <RowItem row={total} />
+              <Text size="2" weight="medium" className={styles.numeric}>
+                {formatQty(total.total)}
+                <Text size="1" color="gray" weight="regular">
+                  {" "}
+                  · {total.rows} {total.rows === 1 ? "row" : "rows"}
+                </Text>
+              </Text>
+            </Flex>
+          ))}
+        </Grid>
+      </Card>
+    </Section>
+  );
+}
+
+function CharactersSection({ names, empty }: { names: string[]; empty: string }) {
+  return (
+    <Section title="Characters">
+      {names.length === 0 ? (
+        <Text size="2" color="gray">
+          {empty}
+        </Text>
+      ) : (
+        <Flex gap="2" wrap="wrap">
+          {names.map((name) => (
+            <Badge key={name} color="gray" variant="surface" size="2">
+              {name}
+            </Badge>
+          ))}
+        </Flex>
+      )}
+    </Section>
+  );
+}
+
+function characterNames(rows: readonly { character: string }[]): string[] {
+  return [...new Set(rows.map((row) => row.character.trim()).filter((name) => name !== ""))];
+}
+
+export interface ManualResultProps {
+  imageId: string;
+  /** The rows typed so far. */
+  review: ImageReview | undefined;
+  dispatch: (action: ReviewAction) => void;
+  /** Whether the entry has a screenshot to read the rows off. */
+  hasScreenshot: boolean;
+  activeRowId: string | null;
+  onActiveRow: (rowId: string | null) => void;
+  /** Character names known anywhere in the batch. */
+  characters: readonly string[];
+}
+
+/**
+ * A manual entry: the same rows table, totals and characters as a read, minus
+ * everything that only a read has (confidence, "Accept all", warnings, the
+ * model's footer). Nothing here talks to the server.
+ */
+export function ManualResult({
+  imageId,
+  review,
+  dispatch,
+  hasScreenshot,
+  activeRowId,
+  onActiveRow,
+  characters,
+}: ManualResultProps) {
+  const animate = !useReducedMotion();
+  const counts = reviewCounts(review);
+  const rows = correctedRows(review);
+
+  return (
+    <Flex direction="column" gap="5">
+      <Section title="Deposit rows">
+        <Flex align="center" gap="2" wrap="wrap">
+          <Text size="2" color="gray">
+            {counts.rows} {counts.rows === 1 ? "row" : "rows"} · added by hand
+            {hasScreenshot ? " from the screenshot" : ""} · nothing is sent anywhere
+          </Text>
+          <span aria-live="polite">
+            <ToCheckBadge rows={counts.rows} toCheck={counts.toCheck} />
+          </span>
+        </Flex>
+        {review && (
+          <ReviewRows
+            manual
+            imageId={imageId}
+            review={review}
+            dispatch={dispatch}
+            screenshot={null}
+            activeRowId={activeRowId}
+            onActiveRow={onActiveRow}
+            selection={null}
+            characters={characters}
+            animate={animate}
+          />
+        )}
+      </Section>
+
+      <TotalsSection title={hasScreenshot ? "Totals in this screenshot" : "Totals in this entry"} totals={totalsByItem(rows)} />
+
+      {rows.length > 0 && <CharactersSection names={characterNames(rows)} empty="None typed." />}
+    </Flex>
+  );
+}
+
 export interface TryResultProps {
   imageId: string;
   result: ExtractionResult;
@@ -143,7 +257,7 @@ export function TryResult({
   const counts = reviewCounts(review);
   const rows = correctedRows(review);
   const totals = totalsByItem(rows);
-  const names = [...new Set(rows.map((row) => row.character.trim()).filter((name) => name !== ""))];
+  const names = characterNames(rows);
   const changed = counts.edited + counts.added + counts.deleted > 0;
 
   return (
@@ -198,46 +312,13 @@ export function TryResult({
         )}
       </Section>
 
-      {totals.length > 0 && (
-        <Section title="Totals in this screenshot">
-          <Card size="1">
-            <Grid columns={{ initial: "1", sm: "2" }} gapX="6" gapY="2">
-              {totals.map((total) => (
-                <Flex key={total.itemId} align="center" justify="between" gap="3" minWidth="0">
-                  <RowItem row={total} />
-                  <Text size="2" weight="medium" className={styles.numeric}>
-                    {formatQty(total.total)}
-                    <Text size="1" color="gray" weight="regular">
-                      {" "}
-                      · {total.rows} {total.rows === 1 ? "row" : "rows"}
-                    </Text>
-                  </Text>
-                </Flex>
-              ))}
-            </Grid>
-          </Card>
-        </Section>
-      )}
+      <TotalsSection title="Totals in this screenshot" totals={totals} />
 
       <Section title="Warnings">
         <Warnings warnings={result.warnings} />
       </Section>
 
-      <Section title="Characters">
-        {names.length === 0 ? (
-          <Text size="2" color="gray">
-            None read.
-          </Text>
-        ) : (
-          <Flex gap="2" wrap="wrap">
-            {names.map((name) => (
-              <Badge key={name} color="gray" variant="surface" size="2">
-                {name}
-              </Badge>
-            ))}
-          </Flex>
-        )}
-      </Section>
+      <CharactersSection names={names} empty="None read." />
 
       <RunFooter result={result} durationMs={durationMs} />
     </Flex>

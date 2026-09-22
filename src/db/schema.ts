@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, integer, pgTable, primaryKey, text } from "drizzle-orm/pg-core";
+import { bigint, integer, jsonb, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 import type { EliteType, ItemKind, Rarity } from "@/catalog";
 
 /** Tracked items: the vendored catalog, seeded from src/catalog/catalog.json. */
@@ -40,6 +40,19 @@ export const recipeItems = pgTable(
   (t) => [primaryKey({ columns: [t.recipeId, t.itemId] })],
 );
 
+/**
+ * Admin settings: one row per key, the value as JSON. Read and written only
+ * through src/modules/settings, which owns the known keys and their defaults.
+ */
+export const settings = pgTable("settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Free text until Discord auth (#4) exists; then the admin's Discord id. */
+  updatedBy: text("updated_by"),
+});
+
 export type ItemRow = typeof items.$inferSelect;
 export type RecipeRow = typeof recipes.$inferSelect;
 export type RecipeItemRow = typeof recipeItems.$inferSelect;
+export type SettingRow = typeof settings.$inferSelect;

@@ -2,12 +2,15 @@
 
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Badge, Button, Callout, Card, Flex, Grid, IconButton, Progress, Spinner, Text } from "@radix-ui/themes";
+import { holdsRows, isReviewable } from "@/modules/playground/batch";
 import { buildFixture, fixtureFileName, fixtureJson } from "@/modules/playground/export";
 import { rowAtFraction } from "@/modules/playground/geometry";
 import {
+  canGoManual,
   canRetryEntry,
   exceedsHostLimit,
   failureText,
+  isManualEntry,
   type EntryState,
   type QueueEntry,
 } from "@/modules/playground/queue";
@@ -21,7 +24,7 @@ import {
 } from "@/modules/playground/review";
 import { BESIDE_QUERY, useImageSize, useMediaQuery } from "./hooks";
 import type { RowSelection } from "./ReviewRows";
-import { ToCheckBadge, TryResult } from "./TryResult";
+import { ManualResult, ToCheckBadge, TryResult } from "./TryResult";
 import reviewStyles from "./Review.module.css";
 import styles from "./TryPlayground.module.css";
 
@@ -29,6 +32,8 @@ export interface EntryActions {
   onRetry: (id: string) => void;
   onCancel: (id: string) => void;
   onRemove: (id: string) => void;
+  /** Give up on reading this image and add its rows by hand. */
+  onManual: (id: string) => void;
 }
 
 /** What every entry view needs to show and change the human review. */
@@ -66,6 +71,7 @@ const STATE_LABEL: Record<EntryState, string> = {
   done: "Done",
   failed: "Failed",
   canceled: "Canceled",
+  ready: "Manual",
 };
 
 const STATE_COLOR: Record<EntryState, "gray" | "amber" | "green" | "red"> = {
@@ -74,6 +80,7 @@ const STATE_COLOR: Record<EntryState, "gray" | "amber" | "green" | "red"> = {
   done: "green",
   failed: "red",
   canceled: "gray",
+  ready: "gray",
 };
 
 function StateBadge({ entry }: { entry: QueueEntry }) {
@@ -84,19 +91,36 @@ function StateBadge({ entry }: { entry: QueueEntry }) {
       </Badge>
     );
   }
+  const variant = entry.state === "canceled" ? "outline" : entry.state === "ready" ? "surface" : "soft";
   return (
-    <Badge color={STATE_COLOR[entry.state]} variant={entry.state === "canceled" ? "outline" : "soft"} size="1">
+    <Badge color={STATE_COLOR[entry.state]} variant={variant} size="1">
       {entry.state === "reading" && <Spinner size="1" />}
       {STATE_LABEL[entry.state]}
     </Badge>
   );
 }
 
-function isBankLog(entry: QueueEntry): boolean {
-  return entry.state === "done" && !!entry.body && entry.body.result.looksLikeBankLog;
+/** Reads only: a manual entry never goes to the host, so its size does not matter. */
+function overHostLimit(entry: QueueEntry): boolean {
+  return !isManualEntry(entry) && entry.state !== "done" && exceedsHostLimit(entry.file.size);
+}
+
+function PencilIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4" />
+    </svg>
+  );
 }
 
 function Thumb({ entry }: { entry: QueueEntry }) {
+  if (entry.blank) {
+    return (
+      <span className={styles.thumb} data-empty="true" aria-hidden>
+        <PencilIcon />
+      </span>
+    );
+  }
   if (!entry.previewUrl) {
     return (
       <span className={styles.thumb} data-empty="true" aria-hidden>
@@ -144,7 +168,7 @@ function EntryHeader({
   onSelect: () => void;
   onRemove: () => void;
 }) {
-  const counts = isBankLog(entry) ? reviewCounts(review) : null;
+  const counts = holdsRows(entry) ? reviewCounts(review) : null;
 
   return (
     <div className={styles.entryHeader} data-selected={selected} data-mode={mode}>
@@ -163,7 +187,7 @@ function EntryHeader({
           </Text>
           <span className={styles.entryMeta}>
             <StateBadge entry={entry} />
-            {entry.state !== "done" && exceedsHostLimit(entry.file.size) && (
+            {overHostLimit(entry) && (
               <Badge
                 color="amber"
                 variant="outline"
@@ -283,7 +307,7 @@ function EntryBody({
 
   return (
     <Flex direction="column" gap="4" minWidth="0">
-      {entry.state !== "done" && exceedsHostLimit(entry.file.size) && entry.error?.kind !== "too_large" && (
+      {overHostLimit(entry) && entry.error?.kind !== "too_large" && (
         <Callout.Root color="amber" size="1">
           <Callout.Text>
             {formatBytes(entry.file.size)}: the host rejects uploads over about 4.5 MB. Crop the screenshot or
@@ -334,14 +358,26 @@ function EntryBody({
         />
       )}
 
+      {entry.state === "ready" && (
+        <ManualResult
+          imageId={entry.id}
+          review={review}
+          dispatch={context.dispatch}
+          hasScreenshot={!entry.blank}
+          activeRowId={link.activeRowId}
+          onActiveRow={(rowId) => link.setActiveRow(rowId, "rows")}
+          characters={context.characters}
+        />
+      )}
+
       <Flex gap="3" wrap="wrap">
-        {entry.state === "done" && entry.body && (
+        {isReviewable(entry) && (
           <Button
             size="2"
             variant="soft"
             title="The corrected rows as an extractor fixture (expected.json). Nothing is uploaded."
             onClick={() => {
-              const looksLikeBankLog = entry.body?.result.looksLikeBankLog ?? false;
+              const looksLikeBankLog = holdsRows(entry);
               downloadText(
                 fixtureFileName(entry.file.name),
                 fixtureJson(buildFixture(looksLikeBankLog, correctedRows(review))),
@@ -355,6 +391,16 @@ function EntryBody({
         {canRetryEntry(entry) && (
           <Button size="2" variant="soft" onClick={() => actions.onRetry(entry.id)}>
             Retry
+          </Button>
+        )}
+        {(entry.state === "failed" || entry.state === "canceled") && canGoManual(entry) && (
+          <Button
+            size="2"
+            variant="soft"
+            title="Keep the screenshot as a reference and type its rows yourself. Nothing is sent."
+            onClick={() => actions.onManual(entry.id)}
+          >
+            Add rows by hand
           </Button>
         )}
         {pending && (
@@ -389,7 +435,7 @@ function Screenshot({
 }) {
   const scroller = useRef<HTMLDivElement | null>(null);
   const bandRef = useRef<HTMLDivElement | null>(null);
-  const rows = isBankLog(entry) ? activeRows(review) : [];
+  const rows = holdsRows(entry) ? activeRows(review) : [];
   const linked = rows.some((row) => row.box !== null);
   const band = rows.find((row) => row.id === link.activeRowId)?.box ?? null;
   const follow = layout !== "card" && link.activeFrom === "rows";
@@ -482,7 +528,7 @@ export function EntryRail({
   onRemove: (id: string) => void;
 }) {
   return (
-    <ul className={styles.entryList} aria-label="Screenshots">
+    <ul className={styles.entryList} aria-label="Entries">
       {entries.map((entry) => (
         <li key={entry.id}>
           <EntryHeader
@@ -514,10 +560,13 @@ export function EntryDetail({
   const link = useRowLink();
   // The rows table needs about 620px. From 1280px the screenshot stands beside it; between 1024px and
   // that there is no room for both, so it goes on top, capped in height.
-  const beside = useMediaQuery(BESIDE_QUERY);
+  const beside = useMediaQuery(BESIDE_QUERY) && !entry.blank;
   return (
     <Grid columns={beside ? "minmax(0, 1fr) minmax(0, 2.4fr)" : "minmax(0, 1fr)"} gap="4" align="start">
-      <Screenshot entry={entry} layout={beside ? "side" : "top"} review={context.review[entry.id]} link={link} />
+      {/* The manual entry without a screenshot has nothing to show here. */}
+      {!entry.blank && (
+        <Screenshot entry={entry} layout={beside ? "side" : "top"} review={context.review[entry.id]} link={link} />
+      )}
       <EntryBody entry={entry} paused={paused} actions={actions} context={context} link={link} />
     </Grid>
   );
@@ -539,7 +588,7 @@ function EntryCardPanel({
   const link = useRowLink();
   return (
     <Flex id={panelId} direction="column" gap="4" pt="3" minWidth="0">
-      <Screenshot entry={entry} layout="card" review={context.review[entry.id]} link={link} />
+      {!entry.blank && <Screenshot entry={entry} layout="card" review={context.review[entry.id]} link={link} />}
       <EntryBody entry={entry} paused={paused} actions={actions} context={context} link={link} />
     </Flex>
   );
@@ -562,7 +611,7 @@ export function EntryCards({
   context: ReviewContext;
 }) {
   return (
-    <ul className={styles.entryList} aria-label="Screenshots">
+    <ul className={styles.entryList} aria-label="Entries">
       {entries.map((entry) => {
         const open = entry.id === openId;
         const panelId = `try-entry-${entry.id}`;
