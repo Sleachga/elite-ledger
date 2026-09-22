@@ -68,7 +68,8 @@ Leadership uses the data to decide who receives crafted Elites.
   `accentColor="amber"`. Game flavor comes only from item icons and their
   rarity-colored borders; chrome stays neutral. Typography = Radix default.
 - **Header** — guild name as the wordmark (small amber mark + name);
-  "Elite Ledger" is the page title/tagline. Guild name: TBD (ask Sandy).
+  "Elite Ledger" is the tagline/page title. Guild name: **Carpe Rektem**
+  (`NEXT_PUBLIC_GUILD_NAME`, set on Vercel).
 - **Mobile-first** — every screen designed at 390px first; Radix responsive
   props; a page never scrolls sideways. Desktop: top bar (Progress ·
   Contributors · Ledger · Crafts · Audit, "Upload" as the one filled amber

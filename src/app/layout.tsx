@@ -8,7 +8,7 @@ import { TopBar } from "@/components/shell/TopBar";
 const guildName = process.env.NEXT_PUBLIC_GUILD_NAME?.trim() || "Elite Ledger";
 
 export const metadata: Metadata = {
-  title: { default: "Elite Ledger", template: "%s · Elite Ledger" },
+  title: { default: `${guildName} · Elite Ledger`, template: `%s · ${guildName}` },
   description: `Public, verifiable ledger of Elite-craft materials deposited into the ${guildName} guild bank.`,
 };
 
