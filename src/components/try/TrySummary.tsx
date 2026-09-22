@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Badge, Button, Card, Flex, Grid, Heading, Progress, Text } from "@radix-ui/themes";
+import { Badge, Button, Callout, Card, Flex, Grid, Heading, Link, Progress, Text } from "@radix-ui/themes";
 import { catalog, findItem } from "@/catalog";
 import { ItemChip, UnknownItemChip } from "@/components/ItemChip";
 import { CountUp } from "@/components/progress/CountUp";
 import { formatQty } from "@/lib/format";
-import { reviewedImages } from "@/modules/playground/batch";
+import { batchCounts, reviewedImages, type UploadStep } from "@/modules/playground/batch";
 import { buildTsv } from "@/modules/playground/export";
 import type { QueueEntry } from "@/modules/playground/queue";
-import { batchReviewCounts, type ReviewState } from "@/modules/playground/review";
-import { characterBreakdown, combinedTotals, summarize } from "@/modules/playground/summary";
+import type { ReviewState } from "@/modules/playground/review";
+import { combinedTotals, summarize, type CharacterTotal } from "@/modules/playground/summary";
+import { copyText } from "./clipboard";
+import type { SubmitOutcome } from "./submit";
 import styles from "./TryPlayground.module.css";
 
 const CATALOG_ORDER = catalog.map((item) => item.id);
@@ -30,6 +32,8 @@ function Stat({
   hint,
   color,
   wide = false,
+  onClick,
+  title,
 }: {
   label: string;
   children: React.ReactNode;
@@ -37,18 +41,33 @@ function Stat({
   color?: "amber" | "red" | "green";
   /** Spans both columns of the phone grid. */
   wide?: boolean;
+  /** Makes the tile a button. */
+  onClick?: () => void;
+  title?: string;
 }) {
+  const inner = (
+    <Flex direction="column" gap="1" minWidth="0">
+      <Text size="1" color="gray" weight="medium" className={styles.statLabel}>
+        {label}
+      </Text>
+      <Text size="5" weight="bold" color={color} className={styles.numeric} style={{ lineHeight: 1.15 }}>
+        {children}
+      </Text>
+      {hint}
+    </Flex>
+  );
+  if (onClick) {
+    return (
+      <Card size="1" asChild className={wide ? styles.statWide : undefined}>
+        <button type="button" className={styles.statButton} onClick={onClick} title={title}>
+          {inner}
+        </button>
+      </Card>
+    );
+  }
   return (
     <Card size="1" className={wide ? styles.statWide : undefined}>
-      <Flex direction="column" gap="1" minWidth="0">
-        <Text size="1" color="gray" weight="medium" className={styles.statLabel}>
-          {label}
-        </Text>
-        <Text size="5" weight="bold" color={color} className={styles.numeric} style={{ lineHeight: 1.15 }}>
-          {children}
-        </Text>
-        {hint}
-      </Flex>
+      {inner}
     </Card>
   );
 }
@@ -57,35 +76,8 @@ function plural(count: number, one: string, many: string): string {
   return count === 1 ? one : many;
 }
 
-/** Clipboard API where there is one (https, localhost); the old textarea trick elsewhere (a phone on the LAN). */
-async function copyText(text: string): Promise<boolean> {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // Permission refused: try the fallback.
-  }
-  const area = document.createElement("textarea");
-  area.value = text;
-  area.setAttribute("readonly", "");
-  area.style.position = "fixed";
-  area.style.opacity = "0";
-  document.body.append(area);
-  area.select();
-  let copied = false;
-  try {
-    copied = document.execCommand("copy");
-  } catch {
-    copied = false;
-  }
-  area.remove();
-  return copied;
-}
-
-/** "Copy rows": the corrected rows of the whole batch as TSV, with an inline "Copied" for two seconds. */
-function CopyRows({ tsv, rows }: { tsv: () => string; rows: number }) {
+/** "Copy rows": the corrected rows in scope as TSV, with an inline "Copied" for two seconds. */
+function CopyRows({ tsv, rows, suffix, label }: { tsv: () => string; rows: number; suffix?: string; label?: string }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
 
   useEffect(() => {
@@ -99,7 +91,7 @@ function CopyRows({ tsv, rows }: { tsv: () => string; rows: number }) {
       ? "Copied"
       : state === "failed"
         ? "Copy failed"
-        : `Copy ${formatQty(rows)} ${plural(rows, "row", "rows")}`;
+        : (label ?? `Copy ${formatQty(rows)} ${plural(rows, "row", "rows")}`) + (suffix ? ` · ${suffix}` : "");
 
   return (
     <Button
@@ -115,22 +107,67 @@ function CopyRows({ tsv, rows }: { tsv: () => string; rows: number }) {
   );
 }
 
-/**
- * Live summary of the whole batch: counts, combined totals, per-character rows.
- * Everything row-shaped reads the corrected rows (edits in, deleted rows out).
- */
-export function TrySummary({ entries, review }: { entries: readonly QueueEntry[]; review: ReviewState }) {
-  const summary = summarize(entries);
-  const images = reviewedImages(entries, review);
-  const totals = combinedTotals(images, CATALOG_ORDER);
-  const characters = characterBreakdown(images);
-  const counts = batchReviewCounts(
-    images.map((image) => (image.looksLikeBankLog ? review[image.imageId] : undefined)),
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
   );
+}
+
+function characterLabel(character: string): string {
+  return character || "No name";
+}
+
+export interface TrySummaryProps {
+  entries: readonly QueueEntry[];
+  review: ReviewState;
+  /** Rows per character across the batch, from the corrected rows. */
+  characterTotals: readonly CharacterTotal[];
+  /** The "By character" filter. */
+  character: string | null;
+  step: UploadStep;
+  confirmed: boolean;
+  /** How the last Confirm went. */
+  submitOutcome: SubmitOutcome | null;
+  sheetUrl?: string;
+  onFilterCharacter: (character: string | null) => void;
+  /** Open the checker on the first image that needs a look. */
+  onCheck: () => void;
+  onConfirm: () => void;
+  onNewBatch: () => void;
+}
+
+/**
+ * Live summary of the whole batch: counts, combined totals, per-character rows,
+ * and the Confirm step. Everything row-shaped reads the corrected rows (edits
+ * in, deleted rows out), within the character filter.
+ */
+export function TrySummary({
+  entries,
+  review,
+  characterTotals,
+  character,
+  step,
+  confirmed,
+  submitOutcome,
+  sheetUrl,
+  onFilterCharacter,
+  onCheck,
+  onConfirm,
+  onNewBatch,
+}: TrySummaryProps) {
+  const summary = summarize(entries);
+  const images = reviewedImages(entries, review, character);
+  const totals = combinedTotals(images, CATALOG_ORDER);
+  const counts = batchCounts(entries, review, character);
+  const allRows = characterTotals.reduce((sum, total) => sum + total.rows, 0);
+  const scopeText = character === null ? undefined : characterLabel(character);
 
   // A batch typed entirely by hand has nothing to read: no read progress, warnings or read time to show.
   const manualOnly = summary.total > 0 && summary.ready === summary.total;
   const finished = summary.done + summary.ready;
+  const reading = summary.reading + summary.queued;
 
   const pending = [
     summary.reading > 0 ? `${summary.reading} reading` : null,
@@ -138,6 +175,14 @@ export function TrySummary({ entries, review }: { entries: readonly QueueEntry[]
     summary.failed > 0 ? `${summary.failed} failed` : null,
     summary.canceled > 0 ? `${summary.canceled} canceled` : null,
   ].filter((part): part is string => part !== null);
+
+  const sheetLink = sheetUrl ? (
+    <Link href={sheetUrl} target="_blank" rel="noreferrer">
+      the guild sheet
+    </Link>
+  ) : (
+    "the guild sheet"
+  );
 
   return (
     <Flex direction="column" gap="3" asChild>
@@ -165,15 +210,21 @@ export function TrySummary({ entries, review }: { entries: readonly QueueEntry[]
               / {summary.total}
             </Text>
           </Stat>
-          <Stat label="Deposit rows">
+          <Stat label="Deposit rows" hint={scopeText && <Text size="1" color="gray">{scopeText} only</Text>}>
             <CountUp value={counts.rows} />
           </Stat>
           {counts.rows > 0 && counts.toCheck === 0 ? (
-            <Stat label="To check" color="green">
+            <Stat label="To check" color="green" onClick={onCheck} title="Open the checker">
               <span aria-live="polite">All checked</span>
             </Stat>
           ) : (
-            <Stat label="To check" color={counts.toCheck > 0 ? "amber" : undefined}>
+            <Stat
+              label="To check"
+              color={counts.toCheck > 0 ? "amber" : undefined}
+              onClick={counts.toCheck > 0 ? onCheck : undefined}
+              title={counts.toCheck > 0 ? "Open the checker on the first row that needs a look" : undefined}
+              hint={counts.toCheck > 0 && <Text size="1" color="amber">Open the checker →</Text>}
+            >
               <span aria-live="polite">
                 <CountUp value={counts.toCheck} />
               </span>
@@ -197,12 +248,58 @@ export function TrySummary({ entries, review }: { entries: readonly QueueEntry[]
 
         <Card size="1">
           <Flex direction="column" gap="3">
+            {characterTotals.length > 0 && (
+              <Flex direction="column" gap="2">
+                <Flex align="center" gap="2" wrap="wrap">
+                  <Heading as="h2" size="2">
+                    By character
+                  </Heading>
+                  <Text size="1" color="gray">
+                    {character === null ? "Pick one to check and copy only that character's rows." : `Showing ${scopeText} only.`}
+                  </Text>
+                </Flex>
+                <Flex gap="2" wrap="wrap" role="group" aria-label="Filter by character">
+                  <button
+                    type="button"
+                    className={styles.chip}
+                    aria-pressed={character === null}
+                    onClick={() => onFilterCharacter(null)}
+                  >
+                    <span className={styles.characterName}>All</span>
+                    <span className={styles.numeric}>
+                      {formatQty(allRows)} {plural(allRows, "row", "rows")}
+                    </span>
+                  </button>
+                  {characterTotals.map((total) => (
+                    <button
+                      key={total.character}
+                      type="button"
+                      className={styles.chip}
+                      aria-pressed={character === total.character}
+                      title={
+                        character === total.character
+                          ? "Show every character again"
+                          : `Show only ${characterLabel(total.character)}'s rows`
+                      }
+                      onClick={() => onFilterCharacter(character === total.character ? null : total.character)}
+                    >
+                      <span className={styles.characterName}>{characterLabel(total.character)}</span>
+                      <span className={styles.numeric}>
+                        {formatQty(total.rows)} {plural(total.rows, "row", "rows")}
+                        {total.images > 1 ? ` · ${total.images} images` : ""}
+                      </span>
+                    </button>
+                  ))}
+                </Flex>
+              </Flex>
+            )}
+
             <Flex direction="column" gap="2">
               <Flex align="center" justify="between" gap="3" wrap="wrap">
                 <Heading as="h2" size="2">
                   Combined totals
                 </Heading>
-                <CopyRows rows={counts.rows} tsv={() => buildTsv(images)} />
+                <CopyRows rows={counts.rows} suffix={scopeText} tsv={() => buildTsv(images)} />
               </Flex>
               {totals.length === 0 ? (
                 <Text size="2" color="gray">
@@ -228,27 +325,77 @@ export function TrySummary({ entries, review }: { entries: readonly QueueEntry[]
                 </Grid>
               )}
             </Flex>
-
-            {characters.length > 0 && (
-              <Flex direction="column" gap="2">
-                <Heading as="h2" size="2">
-                  By character
-                </Heading>
-                <Flex gap="2" wrap="wrap">
-                  {characters.map((entry) => (
-                    <Badge key={entry.character} color="gray" variant="surface" size="2" className={styles.characterBadge}>
-                      <span className={styles.characterName}>{entry.character || "No name"}</span>
-                      <span className={styles.numeric}>
-                        {formatQty(entry.rows)} {plural(entry.rows, "row", "rows")}
-                        {entry.images > 1 ? ` · ${entry.images} images` : ""}
-                      </span>
-                    </Badge>
-                  ))}
-                </Flex>
-              </Flex>
-            )}
           </Flex>
         </Card>
+
+        {step !== "upload" && (
+          <Card size="2" id="upload-confirm" className={styles.confirmCard} data-ready={step === "confirm"}>
+            {confirmed ? (
+              <Flex direction="column" gap="3">
+                <Callout.Root color="green" role="status">
+                  <Callout.Text weight="medium">
+                    <CheckIcon />{" "}
+                    {submitOutcome?.kind === "copy_failed"
+                      ? `Confirmed — but the ${formatQty(submitOutcome.rows)} rows could not be copied.`
+                      : `Confirmed — ${formatQty(submitOutcome?.rows ?? counts.rows)} rows copied.`}
+                  </Callout.Text>
+                  <Callout.Text>
+                    {submitOutcome?.kind === "copy_failed" ? (
+                      <>Press Copy rows, then paste them into the Ledger tab of {sheetLink}.</>
+                    ) : (
+                      <>Paste them into the Ledger tab of {sheetLink}.</>
+                    )}
+                  </Callout.Text>
+                </Callout.Root>
+                <Flex gap="2" wrap="wrap">
+                  <CopyRows rows={counts.rows} suffix={scopeText} label="Copy rows again" tsv={() => buildTsv(images)} />
+                  <Button size="1" variant="soft" color="gray" onClick={onNewBatch}>
+                    Start a new batch
+                  </Button>
+                </Flex>
+              </Flex>
+            ) : (
+              <Flex align="center" justify="between" gap="3" wrap="wrap">
+                <Flex direction="column" gap="1" minWidth="0">
+                  <Heading as="h2" size="3">
+                    Confirm
+                  </Heading>
+                  {step === "confirm" ? (
+                    <Text size="2" color="gray">
+                      {counts.rows === 0
+                        ? "No deposit rows to confirm."
+                        : `Every row is checked: ${formatQty(counts.rows)} ${plural(counts.rows, "row", "rows")}${
+                            scopeText ? ` for ${scopeText}` : ` from ${characterTotals.length} ${plural(characterTotals.length, "character", "characters")}`
+                          }${summary.warnings > 0 ? ` · ${summary.warnings} ${plural(summary.warnings, "warning", "warnings")}` : ""}. Confirming copies them for the guild sheet.`}
+                    </Text>
+                  ) : (
+                    <Flex align="center" gap="2" wrap="wrap">
+                      {counts.toCheck > 0 && (
+                        <Badge color="amber" variant="soft" size="2" className={styles.numeric}>
+                          {formatQty(counts.toCheck)} {plural(counts.toCheck, "row", "rows")} still {counts.toCheck === 1 ? "needs" : "need"} a check
+                        </Badge>
+                      )}
+                      {reading > 0 && (
+                        <Text size="2" color="gray">
+                          {reading} {plural(reading, "image", "images")} still reading.
+                        </Text>
+                      )}
+                      {counts.toCheck > 0 && (
+                        <Button size="1" variant="soft" onClick={onCheck}>
+                          Check rows
+                        </Button>
+                      )}
+                    </Flex>
+                  )}
+                </Flex>
+                <Button size="3" disabled={step !== "confirm" || counts.rows === 0} onClick={onConfirm}>
+                  Confirm {formatQty(counts.rows)} {plural(counts.rows, "row", "rows")}
+                  {scopeText ? ` · ${scopeText}` : ""}
+                </Button>
+              </Flex>
+            )}
+          </Card>
+        )}
       </section>
     </Flex>
   );

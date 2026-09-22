@@ -8,8 +8,8 @@ import { formatQty } from "@/lib/format";
 import type { ExtractionResult, ParsedRow } from "@/modules/extractor";
 import { totalsByItem, type ItemTotal } from "@/modules/playground";
 import {
-  correctedRows,
   reviewCounts,
+  rowsInScope,
   type ImageReview,
   type ReviewAction,
 } from "@/modules/playground/review";
@@ -151,6 +151,8 @@ export interface ManualResultProps {
   onActiveRow: (rowId: string | null) => void;
   /** Character names known anywhere in the batch. */
   characters: readonly string[];
+  /** The "By character" filter: only that character's rows are shown and counted. */
+  character?: string | null;
 }
 
 /**
@@ -166,10 +168,11 @@ export function ManualResult({
   activeRowId,
   onActiveRow,
   characters,
+  character = null,
 }: ManualResultProps) {
   const animate = !useReducedMotion();
-  const counts = reviewCounts(review);
-  const rows = correctedRows(review);
+  const counts = reviewCounts(review, character);
+  const rows = rowsInScope(review, character).map((row) => row.current);
 
   return (
     <Flex direction="column" gap="5">
@@ -194,6 +197,7 @@ export function ManualResult({
             onActiveRow={onActiveRow}
             selection={null}
             characters={characters}
+            character={character}
             animate={animate}
           />
         )}
@@ -219,6 +223,8 @@ export interface TryResultProps {
   selection: RowSelection | null;
   /** Character names read anywhere in the batch. */
   characters: readonly string[];
+  /** The "By character" filter: only that character's rows are shown and counted. */
+  character?: string | null;
 }
 
 export function TryResult({
@@ -232,6 +238,7 @@ export function TryResult({
   onActiveRow,
   selection,
   characters,
+  character = null,
 }: TryResultProps) {
   const animate = !useReducedMotion();
 
@@ -254,8 +261,8 @@ export function TryResult({
     );
   }
 
-  const counts = reviewCounts(review);
-  const rows = correctedRows(review);
+  const counts = reviewCounts(review, character);
+  const rows = rowsInScope(review, character).map((row) => row.current);
   const totals = totalsByItem(rows);
   const names = characterNames(rows);
   const changed = counts.edited + counts.added + counts.deleted > 0;
@@ -307,6 +314,7 @@ export function TryResult({
             onActiveRow={onActiveRow}
             selection={selection}
             characters={characters}
+            character={character}
             animate={animate}
           />
         )}

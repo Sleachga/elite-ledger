@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, useMemo, useReducer, useRef, useState } from "react";
+import { useReducedMotion } from "motion/react";
 import { Box, Button, Callout, Card, Flex, Grid, Heading, SegmentedControl, Text, TextField } from "@radix-ui/themes";
 import { NavIcon } from "@/components/shell/NavIcons";
 import {
@@ -11,7 +12,18 @@ import {
   errorText,
   type PlaygroundStatusBody,
 } from "@/modules/playground";
-import { batchReducer, initialBatchState, knownCharacters } from "@/modules/playground/batch";
+import {
+  batchCounts,
+  batchReducer,
+  canConfirm,
+  checkSequence,
+  firstImageToCheck,
+  initialBatchState,
+  knownCharacters,
+  reviewedImages,
+  uploadStep,
+} from "@/modules/playground/batch";
+import { characterBreakdown } from "@/modules/playground/summary";
 import {
   MODE_LABEL,
   UPLOAD_MODE_STORAGE_KEY,
@@ -39,10 +51,15 @@ import {
   type NewEntry,
   type QueueEntry,
 } from "@/modules/playground/queue";
+import { CheckDialog } from "./CheckDialog";
 import { EntryCards, EntryDetail, EntryRail, type EntryActions, type ReviewContext } from "./TryEntries";
 import { TrySummary } from "./TrySummary";
+import { UploadSteps } from "./UploadSteps";
 import { DESKTOP_QUERY, useMediaQuery } from "./hooks";
+import { submitBatch, type SubmitOutcome } from "./submit";
 import styles from "./TryPlayground.module.css";
+
+const CONFIRM_SECTION_ID = "upload-confirm";
 
 const PASSCODE_STORAGE_KEY = "elite-ledger:try-passcode";
 
@@ -106,7 +123,7 @@ function pastedImages(data: DataTransfer | null): File[] {
   return images;
 }
 
-export function TryPlayground() {
+export function TryPlayground({ sheetUrl }: { sheetUrl?: string }) {
   const [status, setStatus] = useState<PlaygroundStatusBody | null>(null);
   /** The status call has answered (or failed): only then is it known which modes are on offer. */
   const [statusSettled, setStatusSettled] = useState(false);
@@ -114,24 +131,34 @@ export function TryPlayground() {
   const [chosenMode, setChosenMode] = useState<UploadMode | null>(null);
   const [passcode, setPasscode] = useState("");
   const [passcodeRejected, setPasscodeRejected] = useState(false);
-  // The upload queue and the human review of every finished read, behind one reducer.
-  const [{ queue, review }, dispatch] = useReducer(batchReducer<File>, undefined, initialBatchState<File>);
+  // The upload queue, the human review of every finished read, and the page's own affairs, behind one reducer.
+  const [state, dispatch] = useReducer(batchReducer<File>, undefined, initialBatchState<File>);
+  const { queue, review, character, checking, confirmed } = state;
   const [notes, setNotes] = useState<BatchNotes>({ cap: null, duplicates: null });
   const [dragOver, setDragOver] = useState(false);
   /** The user's own choice of entry: undefined = none yet, null = closed everything (cards). */
   const [picked, setPicked] = useState<string | null | undefined>(undefined);
+  /** How the last Confirm went (the rows copied, or not). */
+  const [submitOutcome, setSubmitOutcome] = useState<SubmitOutcome | null>(null);
 
   const controllers = useRef(new Map<string, AbortController>());
   const liveUrls = useRef(new Set<string>());
   const nextId = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  /** "Go to Confirm" was pressed: scroll to the confirm panel once the checker has closed. */
+  const wantConfirm = useRef(false);
   // Rail + detail from 1024px, stacked cards below. Phones first: the server renders the cards.
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
+  const reduceMotion = useReducedMotion();
 
   const { entries, paused } = queue;
   /** Every character name read or typed so far, offered while entering one. */
   const characters = useMemo(() => knownCharacters(entries, review), [entries, review]);
-  const context: ReviewContext = { review, dispatch, characters };
+  /** Rows per character across the batch (filter aside), from the corrected rows. */
+  const characterTotals = useMemo(() => characterBreakdown(reviewedImages(entries, review)), [entries, review]);
+  const context: ReviewContext = { review, dispatch, characters, character };
+  const step = uploadStep(state);
+  const checkingEntry = entries.find((entry) => entry.id === checking) ?? null;
   // A failed status call reads as today's behaviour; the first POST then says what is wrong.
   const modeStatus = modeStatusOf(status);
   const canUseAi = aiAvailable(modeStatus);
@@ -329,7 +356,42 @@ export function TryPlayground() {
     dispatch({ type: "clear" });
     setNotes({ cap: null, duplicates: null });
     setPicked(undefined);
+    setSubmitOutcome(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  /** Open the checker: on `id`, else on the first image with a row to check, else on the first image. */
+  function openCheck(id?: string) {
+    const imageId = id ?? firstImageToCheck(entries, review, character) ?? checkSequence(entries)[0] ?? null;
+    if (imageId === null) return;
+    dispatch({ type: "openCheck", imageId });
+    // The inline view follows, so closing the dialog lands on the same image.
+    setPicked(imageId);
+  }
+
+  /** "Go to Confirm" in the checker: close it, then (once it is gone) bring the confirm panel into view. */
+  function goToConfirm() {
+    wantConfirm.current = true;
+    dispatch({ type: "closeCheck" });
+  }
+
+  function onCheckClosed(event: Event) {
+    if (!wantConfirm.current) return;
+    wantConfirm.current = false;
+    const section = document.getElementById(CONFIRM_SECTION_ID);
+    if (!section) return;
+    // Focus lands on the panel's first button (Confirm, or "Check rows"), not back on the checker's opener.
+    event.preventDefault();
+    section.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    section.querySelector<HTMLElement>("button:not([disabled])")?.focus({ preventScroll: true });
+  }
+
+  /** Confirm the batch: today that copies the rows for the guild sheet (`submitBatch` is the one place to change). */
+  async function confirm() {
+    if (!canConfirm(state)) return;
+    const outcome = await submitBatch(reviewedImages(entries, review, character));
+    setSubmitOutcome(outcome);
+    dispatch({ type: "confirm" });
   }
 
   const actions: EntryActions = {
@@ -346,6 +408,7 @@ export function TryPlayground() {
       abort(id);
       dispatch({ type: "toManual", id, now: Date.now() });
     },
+    onCheck: (id) => openCheck(id),
   };
 
   // Win+Shift+S then Ctrl+V. Text pastes (the passcode field) are left alone.
@@ -367,9 +430,33 @@ export function TryPlayground() {
   const selectedId = resolveSelection(entries, isDesktop && picked === null ? undefined : picked, isDesktop);
   const selected = entries.find((entry) => entry.id === selectedId) ?? null;
   const waiting = entries.filter((entry) => entry.state === "queued").length;
+  const reading = entries.filter((entry) => entry.state === "reading").length;
   const images = imageEntries(entries).length;
   const full = images >= MAX_BATCH_IMAGES;
   const dropDisabled = !statusSettled || full;
+  const counts = batchCounts(entries, review, character);
+  const checkable = checkSequence(entries).length > 0;
+
+  const stepDetail =
+    step === "upload"
+      ? !hasEntries
+        ? mode === "manual"
+          ? "Add screenshots to type the rows from, or add rows without one."
+          : "Add bank-log screenshots; Claude reads the deposit rows from each."
+        : waiting + reading > 0
+          ? `Reading ${reading + waiting === 1 ? "the screenshot" : `${reading + waiting} screenshots`}…`
+          : null
+      : step === "check"
+        ? counts.toCheck > 0
+          ? `${counts.toCheck} ${counts.toCheck === 1 ? "row needs" : "rows need"} a check${character !== null ? ` for ${character || "rows without a name"}` : ""}.`
+          : waiting + reading > 0
+            ? `Waiting for ${reading + waiting === 1 ? "the last screenshot" : `${reading + waiting} screenshots`}…`
+            : "Checking the rows."
+        : confirmed
+          ? "Confirmed. Paste the rows into the guild sheet, or start a new batch."
+          : counts.rows > 0
+            ? "Every row is checked. Confirm to copy them for the guild sheet."
+            : "No deposit rows to confirm.";
 
   // Manual mode never calls the server, so it never asks for the passcode (unless reads are still waiting for one).
   const passcodeForm = paused && canUseAi && (mode === "ai" || waiting > 0) && (
@@ -554,6 +641,8 @@ export function TryPlayground() {
         addFiles(droppedFiles(event.dataTransfer));
       }}
     >
+      <UploadSteps step={step} detail={stepDetail} onCheck={checkable ? () => openCheck() : null} />
+
       {modeBar}
 
       {passcodeForm}
@@ -566,7 +655,34 @@ export function TryPlayground() {
         </>
       )}
 
-      {hasEntries && <TrySummary entries={entries} review={review} />}
+      {hasEntries && (
+        <TrySummary
+          entries={entries}
+          review={review}
+          characterTotals={characterTotals}
+          character={character}
+          step={step}
+          confirmed={confirmed}
+          submitOutcome={submitOutcome}
+          sheetUrl={sheetUrl}
+          onFilterCharacter={(name) => dispatch({ type: "filterCharacter", character: name })}
+          onCheck={() => openCheck()}
+          onConfirm={() => void confirm()}
+          onNewBatch={clearAll}
+        />
+      )}
+
+      <CheckDialog
+        entry={checkingEntry}
+        entries={entries}
+        review={review}
+        dispatch={dispatch}
+        characters={characters}
+        characterTotals={characterTotals}
+        character={character}
+        onGoToConfirm={goToConfirm}
+        onClosed={onCheckClosed}
+      />
 
       {hasEntries && isDesktop && (
         <Grid columns="232px minmax(0, 1fr)" gap="4" align="start">
@@ -577,10 +693,10 @@ export function TryPlayground() {
             {batchBar}
             <EntryRail
               entries={entries}
-              review={review}
+              context={context}
               selectedId={selectedId}
               onSelect={(id) => setPicked(id)}
-              onRemove={actions.onRemove}
+              actions={actions}
             />
           </Flex>
           {/* Keyed so the rows stagger in again, and the row link starts clean, for a different image. */}

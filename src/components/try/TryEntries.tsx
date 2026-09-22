@@ -20,10 +20,10 @@ import {
   reviewCounts,
   type ImageReview,
   type ReviewAction,
+  type ReviewCounts,
   type ReviewState,
 } from "@/modules/playground/review";
-import { BESIDE_QUERY, useImageSize, useMediaQuery } from "./hooks";
-import type { RowSelection } from "./ReviewRows";
+import { BESIDE_QUERY, useImageSize, useMediaQuery, useRowLink, type RowLink } from "./hooks";
 import { ManualResult, ToCheckBadge, TryResult } from "./TryResult";
 import reviewStyles from "./Review.module.css";
 import styles from "./TryPlayground.module.css";
@@ -34,6 +34,8 @@ export interface EntryActions {
   onRemove: (id: string) => void;
   /** Give up on reading this image and add its rows by hand. */
   onManual: (id: string) => void;
+  /** Open the check dialog on this entry. */
+  onCheck: (id: string) => void;
 }
 
 /** What every entry view needs to show and change the human review. */
@@ -42,6 +44,57 @@ export interface ReviewContext {
   dispatch: (action: ReviewAction) => void;
   /** Character names read anywhere in the batch. */
   characters: readonly string[];
+  /** The "By character" filter: only that character's rows are shown and counted. */
+  character: string | null;
+}
+
+/**
+ * The way into the check dialog, on every entry that holds rows: amber while
+ * rows wait, green once they are all checked, and "Add rows" for a manual entry
+ * that has none yet.
+ */
+export function CheckEntryButton({
+  counts,
+  manual,
+  compact = false,
+  onClick,
+}: {
+  counts: ReviewCounts;
+  manual: boolean;
+  /** The rail: less room, shorter words. */
+  compact?: boolean;
+  onClick: () => void;
+}) {
+  const size = compact ? "1" : "2";
+  if (counts.toCheck > 0) {
+    return (
+      <Button size={size} onClick={onClick} className={styles.numeric}>
+        Check {counts.toCheck}
+        {compact ? "" : counts.toCheck === 1 ? " row" : " rows"}
+      </Button>
+    );
+  }
+  if (counts.rows > 0) {
+    return (
+      <Button size={size} variant="soft" color="green" onClick={onClick} title="Open the rows again">
+        <CheckIcon />
+        {compact ? "Checked" : "All checked"}
+      </Button>
+    );
+  }
+  return (
+    <Button size={size} variant="soft" color="gray" onClick={onClick}>
+      {manual ? "Add rows" : "Open"}
+    </Button>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
+  );
 }
 
 /** Hand the browser a file made on the spot. Nothing leaves the page. */
@@ -61,7 +114,7 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function displayName(entry: QueueEntry): string {
+export function displayName(entry: QueueEntry): string {
   return entry.file.name || "Pasted image";
 }
 
@@ -153,22 +206,29 @@ function Chevron({ open }: { open: boolean }) {
 function EntryHeader({
   entry,
   review,
+  character,
   selected,
   mode,
   controls,
   onSelect,
   onRemove,
+  onCheck,
 }: {
   entry: QueueEntry;
   review: ImageReview | undefined;
+  character: string | null;
   selected: boolean;
   /** "rail": picks the entry shown on the right. "card": opens and closes the card. */
   mode: "rail" | "card";
   controls?: string;
   onSelect: () => void;
   onRemove: () => void;
+  onCheck: () => void;
 }) {
-  const counts = holdsRows(entry) ? reviewCounts(review) : null;
+  const counts = holdsRows(entry) ? reviewCounts(review, character) : null;
+  const checkButton = counts && (
+    <CheckEntryButton counts={counts} manual={isManualEntry(entry)} compact={mode === "rail"} onClick={onCheck} />
+  );
 
   return (
     <div className={styles.entryHeader} data-selected={selected} data-mode={mode}>
@@ -211,6 +271,7 @@ function EntryHeader({
           </span>
         )}
       </button>
+      {mode === "card" && checkButton}
       <IconButton
         size={mode === "card" ? "2" : "1"}
         variant="ghost"
@@ -221,6 +282,8 @@ function EntryHeader({
       >
         <CloseIcon />
       </IconButton>
+      {/* The rail is narrow: the button takes a line of its own under the name. */}
+      {mode === "rail" && checkButton && <span className={styles.railCheck}>{checkButton}</span>}
     </div>
   );
 }
@@ -259,32 +322,6 @@ function Reading({ startedAt }: { startedAt: number }) {
   );
 }
 
-
-/** The row ↔ screenshot link of one entry: which row is lit, and which one was picked on the image. */
-interface RowLink {
-  activeRowId: string | null;
-  /** Where the lit row was pointed at: on the rows, or on the screenshot itself. */
-  activeFrom: "rows" | "shot";
-  setActiveRow: (rowId: string | null, from: "rows" | "shot") => void;
-  selection: RowSelection | null;
-  selectRow: (rowId: string) => void;
-}
-
-function useRowLink(): RowLink {
-  const [active, setActive] = useState<{ rowId: string | null; from: "rows" | "shot" }>({
-    rowId: null,
-    from: "rows",
-  });
-  const [selection, setSelection] = useState<RowSelection | null>(null);
-  return {
-    activeRowId: active.rowId,
-    activeFrom: active.from,
-    setActiveRow: (rowId, from) =>
-      setActive((current) => (current.rowId === rowId && current.from === from ? current : { rowId, from })),
-    selection,
-    selectRow: (rowId) => setSelection((current) => ({ rowId, nonce: (current?.nonce ?? 0) + 1 })),
-  };
-}
 
 function EntryBody({
   entry,
@@ -355,6 +392,7 @@ function EntryBody({
           onActiveRow={(rowId) => link.setActiveRow(rowId, "rows")}
           selection={link.selection}
           characters={context.characters}
+          character={context.character}
         />
       )}
 
@@ -367,10 +405,16 @@ function EntryBody({
           activeRowId={link.activeRowId}
           onActiveRow={(rowId) => link.setActiveRow(rowId, "rows")}
           characters={context.characters}
+          character={context.character}
         />
       )}
 
       <Flex gap="3" wrap="wrap">
+        {holdsRows(entry) && (
+          <Button size="2" variant="soft" onClick={() => actions.onCheck(entry.id)}>
+            Open in the checker
+          </Button>
+        )}
         {isReviewable(entry) && (
           <Button
             size="2"
@@ -516,16 +560,16 @@ function Screenshot({
 /** Desktop: the image list on the left. */
 export function EntryRail({
   entries,
-  review,
+  context,
   selectedId,
   onSelect,
-  onRemove,
+  actions,
 }: {
   entries: readonly QueueEntry[];
-  review: ReviewState;
+  context: ReviewContext;
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onRemove: (id: string) => void;
+  actions: EntryActions;
 }) {
   return (
     <ul className={styles.entryList} aria-label="Entries">
@@ -533,11 +577,13 @@ export function EntryRail({
         <li key={entry.id}>
           <EntryHeader
             entry={entry}
-            review={review[entry.id]}
+            review={context.review[entry.id]}
+            character={context.character}
             mode="rail"
             selected={entry.id === selectedId}
             onSelect={() => onSelect(entry.id)}
-            onRemove={() => onRemove(entry.id)}
+            onRemove={() => actions.onRemove(entry.id)}
+            onCheck={() => actions.onCheck(entry.id)}
           />
         </li>
       ))}
@@ -621,11 +667,13 @@ export function EntryCards({
               <EntryHeader
                 entry={entry}
                 review={context.review[entry.id]}
+                character={context.character}
                 mode="card"
                 selected={open}
                 controls={panelId}
                 onSelect={() => onToggle(entry.id)}
                 onRemove={() => actions.onRemove(entry.id)}
+                onCheck={() => actions.onCheck(entry.id)}
               />
               {open && (
                 <EntryCardPanel entry={entry} panelId={panelId} paused={paused} actions={actions} context={context} />

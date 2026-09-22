@@ -21,8 +21,8 @@ export default function UploadPage() {
           check or correct them, or add the rows by hand.
         </Text>
         <Text as="p" size="2" weight="medium" style={{ margin: 0 }}>
-          Rows are not saved on the site yet. When you are done, press <strong>Copy rows</strong> and paste
-          them into the Ledger tab of{" "}
+          Rows are not saved on the site yet. Once every row is checked, press <strong>Confirm</strong>: the
+          rows are copied for you to paste into the Ledger tab of{" "}
           {sheetUrl ? (
             <Link href={sheetUrl} target="_blank" rel="noreferrer">
               the guild sheet
@@ -36,7 +36,7 @@ export default function UploadPage() {
           Avoid overlapping screenshots — every row is counted as its own deposit.
         </Text>
       </Flex>
-      <TryPlayground />
+      <TryPlayground sheetUrl={sheetUrl} />
     </Flex>
   );
 }
