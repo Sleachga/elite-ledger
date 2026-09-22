@@ -8,11 +8,17 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["@electric-sql/pglite", "postgres"],
 
   // extract() reads the reference icons from disk at request time
-  // (`<cwd>/public/icons`), which build-time tracing cannot see. Ship them with
-  // the one serverless function that calls it. Globs are relative to the
-  // project root, which is also the function's cwd on Vercel.
+  // (`<cwd>/public/icons/ref`, drawn by `pnpm icons:ref`), which build-time
+  // tracing cannot see. Ship them with the one serverless function that calls
+  // it. Globs are relative to the project root, which is also the function's
+  // cwd on Vercel. `public/icons/**` already covers `ref/`; it is listed on
+  // its own so nobody trims the parent glob and takes the prompt's icons away.
   outputFileTracingIncludes: {
-    "/api/try-extract": ["./public/icons/**/*", "./src/catalog/**/*.json"],
+    "/api/try-extract": [
+      "./public/icons/**/*",
+      "./public/icons/ref/**/*",
+      "./src/catalog/**/*.json",
+    ],
   },
 
   // Turbopack (the default) needs no options. Declaring the key keeps Next

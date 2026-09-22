@@ -5,7 +5,8 @@
     "iconBase": "https://thequinfall-codex.com/items/icons/",
     "gamePatch": "1.0.0.32",
     "codexDataUpdated": "2026-05-31",
-    "fetchedAt": "2026-09-20"
+    "fetchedAt": "2026-09-20",
+    "decoysFetchedAt": "2026-09-22"
   },
   "items": [
     {
@@ -131,6 +132,48 @@
       "aliases": ["Bracelet of Faith Fragment", "Bracelet of Faith"],
       "kind": "fragment",
       "eliteType": "bracelet"
+    }
+  ],
+  "decoys": [
+    {
+      "id": "faded-veltryn",
+      "name": "Faded Veltryn",
+      "rarity": "common",
+      "icon": "material_icon1_13351.png",
+      "lookalikeOf": ["purified-veltryn"],
+      "differs": "the same corked bottle, but its liquid is black with orange wisps, not red"
+    },
+    {
+      "id": "bright-veltryn",
+      "name": "Bright Veltryn",
+      "rarity": "uncommon",
+      "icon": "material_icon1_13352.png",
+      "lookalikeOf": ["purified-veltryn"],
+      "differs": "the same corked bottle, but its liquid is blue, not red"
+    },
+    {
+      "id": "mithril-ingot",
+      "name": "Mithril Ingot",
+      "rarity": "common",
+      "icon": "material_icon1_13141.png",
+      "lookalikeOf": ["mithrilium"],
+      "differs": "the same starry-textured bar, tinted silver-teal instead of purple"
+    },
+    {
+      "id": "adamantite-ingot",
+      "name": "Adamantite Ingot",
+      "rarity": "common",
+      "icon": "material_icon1_13140.png",
+      "lookalikeOf": ["mithrilium"],
+      "differs": "a purple starry-textured bar almost identical to Mithrilium's; the border is the reliable difference"
+    },
+    {
+      "id": "obsidian-alloy",
+      "name": "Obsidian Alloy",
+      "rarity": "uncommon",
+      "icon": "material_icon1_13156.png",
+      "lookalikeOf": ["gold-ingot", "copper-ingot"],
+      "differs": "an amber-brown bar with black pits, between gold and copper in colour"
     }
   ]
 }

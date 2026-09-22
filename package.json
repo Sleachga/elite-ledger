@@ -16,7 +16,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed.ts",
     "eval:extractor": "tsx scripts/eval-extractor.ts",
-    "fixtures:extractor": "tsx scripts/make-synthetic-fixtures.ts"
+    "fixtures:extractor": "tsx scripts/make-synthetic-fixtures.ts",
+    "icons:ref": "tsx scripts/make-reference-icons.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.127.0",
