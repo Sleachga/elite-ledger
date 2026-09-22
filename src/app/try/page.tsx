@@ -1,36 +1,6 @@
-import type { Metadata } from "next";
-import { Badge, Flex, Heading, Text } from "@radix-ui/themes";
-import { TryPlayground } from "@/components/try/TryPlayground";
+import { permanentRedirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Try the extractor",
-  description: "Playground: see what the extractor reads from guild bank-log screenshots. Nothing is saved.",
-};
-
+/** The playground grew into the upload page; keep old links working. */
 export default function TryPage() {
-  return (
-    <Flex direction="column" gap="5">
-      <Flex direction="column" gap="2">
-        <Flex align="center" gap="3" wrap="wrap">
-          <Heading as="h1" size="6">
-            Try the extractor
-          </Heading>
-          <Badge color="amber" variant="soft">
-            Playground
-          </Badge>
-        </Flex>
-        <Text as="p" color="gray" style={{ margin: 0 }}>
-          Add guild bank-log screenshots, several at once. Let Claude read the deposit rows from each and
-          check or correct them, or add the rows by hand.
-        </Text>
-        <Text as="p" size="2" weight="medium" style={{ margin: 0 }}>
-          Playground — nothing is saved to the ledger.
-        </Text>
-        <Text as="p" size="2" color="gray" style={{ margin: 0 }}>
-          Avoid overlapping screenshots — every row is counted as its own deposit.
-        </Text>
-      </Flex>
-      <TryPlayground />
-    </Flex>
-  );
+  permanentRedirect("/upload");
 }

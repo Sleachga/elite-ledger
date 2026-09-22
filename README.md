@@ -210,9 +210,9 @@ fixtures keep mock answers without `quantityText` / `box`, so `--mock` also
 covers answers from before those fields. To add a real screenshot, drop it in a
 new folder with a hand-checked `expected.json`.
 
-## Playground (`/try`)
+## Upload page (`/upload`)
 
-`/try` is a throwaway page for testing the Extractor on real screenshots before
+`/upload` started as a throwaway page for testing the Extractor on real screenshots before
 login and the ledger exist: drop, paste (Win+Shift+S, then Ctrl+V) or pick PNG /
 JPEG / WebP files up to 10 MB each and it shows the parsed deposit rows with
 confidence, per-item totals, warnings, characters, and the model, duration and
@@ -272,7 +272,7 @@ calls `extract()` and returns `{ result, durationMs }` or
 Run it locally with the secrets from 1Password:
 
 ```sh
-op run --env-file=.env.tpl -- pnpm dev      # then open http://localhost:3000/try
+op run --env-file=.env.tpl -- pnpm dev      # then open http://localhost:3000/upload
 ```
 
 On Vercel the reference icons reach the function through
@@ -283,7 +283,7 @@ On Vercel the reference icons reach the function through
 
 ## Upload modes & admin settings
 
-`/try` offers two ways to get rows in, picked with a segmented control on top
+`/upload` offers two ways to get rows in, picked with a segmented control on top
 of the page (issue #22):
 
 - **AI-assisted** — the flow described above: each screenshot goes to the
@@ -349,7 +349,7 @@ this moves behind the admin allowlist and every change goes through Audit (#11).
 - `src/modules/settings/` admin settings: typed get/update over the `settings` table, defaults, 15 s cache
 - `src/modules/progress/` pure `computeProgress()` with tests
 - `src/modules/extractor/` `extract()`: screenshot to deposit rows via the Claude API, plus the eval
-- `src/modules/playground/` pure logic for `/try` (upload queue, human-review reducer, quantity parser, TSV / fixture export, totals)
+- `src/modules/playground/` pure logic for `/upload` (upload queue, human-review reducer, quantity parser, TSV / fixture export, totals)
 - `fixtures/extractor/` eval fixtures (screenshot + expected rows)
 - `src/components/` Radix Themes UI (`ItemChip`, shell, progress bars)
 - `src/app/` Next.js App Router pages (`/` is Progress, `/try` the playground, `api/try-extract` its route, `/admin` + `api/admin/settings` the admin settings; other routes are placeholders)
