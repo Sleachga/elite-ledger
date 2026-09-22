@@ -124,6 +124,17 @@ describe("runEval --mock over the shipped fixtures", () => {
     expect(byName["synthetic-not-a-bank-log"].looksLikeBankLog.actual).toBe(false);
     // The decoy fixture's canned answer says "unknown" for every lookalike.
     expect(byName["synthetic-rarity-decoys"].decoys).toEqual({ correct: 4, total: 4 });
+    // What the model said per row travels with the report, with a tally of the border colours.
+    expect(byName["synthetic-rarity-decoys"].rows).toHaveLength(12);
+    expect(byName["synthetic-rarity-decoys"].borderColors).toEqual({
+      common: 5,
+      uncommon: 2,
+      rare: 2,
+      legendary: 1,
+      mythic: 1,
+      none: 1,
+    });
+    expect(byName["synthetic-mixed-stacks"].borderColors).toEqual({}); // legacy answer, no border fields
     expect(report.totals.decoys).toEqual({ correct: 4, total: 4 });
     expect(report.totals.decoyRejectionAccuracy).toBe(1);
     expect(report.skipped).toEqual([]);

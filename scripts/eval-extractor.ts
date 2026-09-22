@@ -39,6 +39,13 @@ function printFixture(result: FixtureResult) {
   for (const row of result.missingRows) console.log(`      missing ${JSON.stringify(row)}`);
   for (const row of result.extraRows) console.log(`      extra   ${JSON.stringify(row)}`);
   for (const warning of result.warnings) console.log(`      warning: ${warning}`);
+  const borders = Object.entries(result.borderColors).map(([color, count]) => `${color} ${count}`);
+  if (borders.length > 0) console.log(`      borders reported: ${borders.join(", ")}`);
+  for (const row of result.rows) {
+    if (row.lowConfidenceReason?.includes("Border color")) {
+      console.log(`      border rule: ${row.itemId} ${row.quantity} ${row.character}: ${row.lowConfidenceReason}`);
+    }
+  }
   if (result.upscale?.applied) {
     const { scale, width, height } = result.upscale;
     console.log(`      sent enlarged ${scale.toFixed(2)}x (upload ${width}x${height})`);

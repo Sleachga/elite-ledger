@@ -34,6 +34,7 @@ import {
   extract,
   type ExtractDeps,
   type ImageMediaType,
+  type ParsedRow,
   type UpscaleReport,
 } from "./index";
 import { UNKNOWN_ITEM } from "./schema";
@@ -104,6 +105,10 @@ export interface FixtureResult {
   looksLikeBankLog: { expected: boolean; actual: boolean | null };
   missingRows: ExpectedRow[];
   extraRows: ExpectedRow[];
+  /** Everything the extractor returned, row by row (border colour, confidence, reasons), for reading a run. */
+  rows: ParsedRow[];
+  /** How many extracted rows reported each `borderColor` value; empty when the answer had none. */
+  borderColors: Record<string, number>;
   warnings: string[];
   /** Set when `extract()` threw; every expected row then counts as missing. */
   error?: { kind: string; message: string };
@@ -310,6 +315,16 @@ async function readJson(file: string): Promise<unknown> {
   return JSON.parse(await readFile(file, "utf8"));
 }
 
+/** `{ common: 5, rare: 2, none: 1 }` over the rows that reported a border colour. */
+export function countBorderColors(rows: readonly Pick<ParsedRow, "borderColor">[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const row of rows) {
+    if (row.borderColor === undefined) continue;
+    counts[row.borderColor] = (counts[row.borderColor] ?? 0) + 1;
+  }
+  return counts;
+}
+
 async function runFixture(dir: string, name: string, options: EvalOptions): Promise<FixtureResult> {
   const expected = expectedSchema.parse(await readJson(path.join(dir, "expected.json")));
   const files = await readdir(dir);
@@ -356,6 +371,8 @@ async function runFixture(dir: string, name: string, options: EvalOptions): Prom
       looksLikeBankLog: { expected: expected.looksLikeBankLog, actual: result.looksLikeBankLog },
       missingRows: score.missingRows,
       extraRows: score.extraRows,
+      rows: result.rows,
+      borderColors: countBorderColors(result.rows),
       warnings: result.warnings,
       model: result.model,
       upscale: result.upscale,
@@ -379,6 +396,8 @@ async function runFixture(dir: string, name: string, options: EvalOptions): Prom
       boxes: score.boxes,
       missingRows: expected.rows.map(pick),
       extraRows: [],
+      rows: [],
+      borderColors: {},
       warnings: [],
       error: { kind: error.kind, message: error.message },
     };
