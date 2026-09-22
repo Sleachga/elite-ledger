@@ -68,14 +68,38 @@ icon file) and `src/catalog/recipes.json` the four Elite recipes from
 CLAUDE.md decision 7. Both are seeded into `items` / `recipes` / `recipe_items`.
 
 Icons are vendored once in `public/icons/` (one copy: served by Next.js at
-`/icons/<file>` and readable from disk for the extraction prompt later).
-Rarity-to-color mapping lives in `src/catalog/index.ts`.
+`/icons/<file>` for ItemChip and readable from disk for the extraction
+prompt). `src/catalog/index.ts` holds both colour mappings: rarity → Radix
+colour for the site's chrome (`RARITY_COLOR`), and rarity → **in-game border
+colour** (`RARITY_BORDER` / `rarityBorderHex`, with the evidence behind each
+rung) for the extractor. The in-game palette is what the owner's screenshots
+show (common green, legendary purple, mythic red, Silver Coin borderless; the
+owner calls Purified Veltryn's rare border purple); the codex's own palette
+disagrees and only lends hex values. Uncommon (blue) and epic (orange) are
+not yet seen in-game.
+
+**Decoys.** `catalog.json` also lists *decoys*: codex items that are not
+tracked but share their art with a tracked item and carry a different rarity,
+so only the border (and a detail of the art) tells them apart: Faded and
+Bright Veltryn beside Purified Veltryn, Mithril and Adamantite Ingot beside
+Mithrilium, Obsidian Alloy beside the gold and copper ingots. Their bare icons
+live in `public/icons/` too. The extractor shows them to the model as "NOT
+tracked" references (see below); nothing else uses them.
+
+**Reference icons.** `pnpm icons:ref` (`scripts/make-reference-icons.ts`)
+draws `public/icons/ref/<id>.png` for every tracked item and decoy: the art on
+a dark slot with a 3px border in its in-game rarity colour, at 96px (twice the
+~48px log slot; Silver Coin without a border, as in the log). They are
+committed and traced into the extraction route. Re-run it after changing an
+icon, a rarity, the palette or the decoy list; `reference-icons.test.ts`
+fails when they are stale.
 
 **Provenance.** Names, rarities and icons were pulled on 2026-09-20 from the
 [Quinfall Codex items page](https://thequinfall-codex.com/items), which showed
-"Game data: patch 1.0.0.32 · updated 2026-05-31". Icon files keep the codex
-names (`material_icon1_<id>.png`). Item data and icon art are the property of
-Vawraek (The Quinfall); the codex serves them under community fair use.
+"Game data: patch 1.0.0.32 · updated 2026-05-31"; the decoys the same way on
+2026-09-22. Icon files keep the codex names (`material_icon1_<id>.png`). Item
+data and icon art are the property of Vawraek (The Quinfall); the codex serves
+them under community fair use.
 
 Naming choices, where CLAUDE.md and the codex differ:
 
@@ -104,11 +128,13 @@ const result = await extract({ image, mediaType: "image/png", knownCharacters: [
 // { looksLikeBankLog, rows, characters, warnings, model, usage, upscale }
 ```
 
-One request per screenshot to `claude-opus-5`: the system prompt, then every
-tracked item's icon from `public/icons/` with an "id / name / rarity" label
-(prompt-cached, so repeat uploads only pay for the screenshot), then the
+One request per screenshot to `claude-opus-5`: the system prompt, then the
+bordered reference icons from `public/icons/ref/` (every tracked item with an
+"id / name / rarity (colour border)" label, then every decoy labelled "NOT
+tracked — same art, different border: <name> (<rarity>, <colour> border)"),
+prompt-cached so repeat uploads only pay for the screenshot, then the
 screenshot. Structured outputs pin the item id to the catalog ids plus
-`unknown`. The model reports every row it sees; the module then applies the
+`unknown` (never a decoy id). The model reports every row it sees; the module then applies the
 rules it owns (CLAUDE.md decision 3): withdrawals and unclear rows are dropped
 with a warning, Silver Coin uses the inline amount, quantities stay digit
 strings (`"10000000000"` never touches `Number`), no overlay number means 1,
@@ -140,6 +166,25 @@ before they existed still parse:
   size was sent to the model. A box that makes no sense (not numbers, outside
   the image, `top >= bottom`) is dropped; when every row has one, rows are
   sorted top to bottom.
+
+**Identity is art and border.** The game draws one piece of artwork on several
+items that differ only in rarity (Bright Veltryn is the blue-bordered bottle,
+Purified Veltryn the purple-bordered one), and the log shows that border
+around the icon. So the prompt says an item's identity is its artwork *and*
+its border colour, gives the colour legend (`green = common, blue = uncommon,
+purple = rare or legendary, orange = epic, red = mythic`, generated from
+`RARITY_BORDER`), shows the decoys as "NOT tracked" references, and asks for
+two more fields per row before `itemId`: `borderColorWord` (the colour as the
+model saw it, `""` for none) and `borderColor` (the rarity that colour stands
+for, or `none` / `unclear`). `normalize.ts` then applies the rule: a reported
+rarity whose border colour differs from the chosen item's turns the row into
+`unknown` at confidence ≤ 0.5 with the reason "Border color X does not match
+<item> (<rarity>, <colour> border)"; `none` / `unclear` keeps the pick but caps
+it at 0.7. Silver Coin has no border in the log and is left out, and rarities
+that share a colour (rare and legendary are both purple until a real
+screenshot shows two shades) never contradict each other. Both fields are
+carried on `ParsedRow` (optional: older answers parse without them) so the
+verify screen can show them.
 
 **Amounts are read twice.** The model copies the printed amount
 (`quantityText`) and also writes it as digits (`quantity`). A printed amount
@@ -176,19 +221,22 @@ pnpm eval:extractor --mock                 # canned model output, no key, no net
 pnpm eval:extractor                        # live: one API call per fixture, needs ANTHROPIC_API_KEY
 pnpm eval:extractor --json --min-accuracy 0.95 synthetic-all-items
 pnpm eval:extractor --json --upscale off   # same run without the enlargement, to compare
+pnpm eval:extractor --json --real-only     # only the real-* fixtures (real screenshots)
 ```
 
 It runs each fixture through `extract()`, matches rows order-insensitively on
 (item id, quantity, game timestamp, character) and prints matched / expected /
 extra per fixture plus totals: row accuracy (`matched / (matched + missing +
-extra)`), item-id accuracy, quantity accuracy, and the two categories where a
-mistake costs the most: **fragment item-id** accuracy (over blueprint-fragment
-rows) and **silver quantity** accuracy (over Silver Coin rows). "row boxes" is
-the share of expected boxes that contain the centre of the reported one. Live
-runs end with the token totals. It exits non-zero below `--min-accuracy`
-(default 0). `--json` writes a report to `fixtures/extractor/.results/`
-(gitignored). `--fixtures <dir>` points it at another folder; trailing names
-select fixtures. `--upscale on|off` and `--max-edge <px>` override
+extra)`), item-id accuracy, quantity accuracy, and the three categories where
+a mistake costs the most: **fragment item-id** accuracy (over blueprint-fragment
+rows), **silver quantity** accuracy (over Silver Coin rows) and **decoy
+rejection** (rows drawn from an untracked lookalike that came back `unknown`,
+over all such rows). "row boxes" is the share of expected boxes that contain
+the centre of the reported one. Live runs end with the token totals. It exits
+non-zero below `--min-accuracy` (default 0). `--json` writes a report to
+`fixtures/extractor/.results/` (gitignored). `--fixtures <dir>` points it at
+another folder; trailing names select fixtures; `--real-only` keeps only the
+`real-*` ones. `--upscale on|off` and `--max-edge <px>` override
 `EXTRACTOR_UPSCALE` / `EXTRACTOR_UPSCALE_MAX_EDGE`. `EXTRACTOR_MODEL` makes it
 the eval for trying a cheaper model. Measured results are logged in
 `docs/extractor-eval.md`.
@@ -196,19 +244,34 @@ the eval for trying a cheaper model. Measured results are logged in
 Fixtures live in `fixtures/extractor/<name>/`:
 
 - `screenshot.png` (or `.jpg` / `.webp`)
-- `expected.json`: `{ "looksLikeBankLog": true, "rows": [{ "itemId", "quantity", "gameTimestamp", "character", "box"? }] }`, deposit rows only; `box` is optional and not part of row matching
+- `expected.json`: `{ "looksLikeBankLog": true, "rows": [{ "itemId", "quantity", "gameTimestamp", "character", "box"?, "decoy"? }] }`, deposit rows only; `box` is optional and not part of row matching; `decoy` names the untracked lookalike a row was drawn from, whose `itemId` is then `"unknown"`
 - `mock-response.json` (optional): a canned model answer, withdrawals and
-  display formatting included, so `--mock` still exercises the module's rules
+  display formatting included, so `--mock` still exercises the module's rules;
+  a fixture without one is skipped by `--mock`, not failed
 
-The six `synthetic-*` fixtures are drawn by `pnpm fixtures:extractor`
+The seven `synthetic-*` fixtures are drawn by `pnpm fixtures:extractor`
 (`scripts/make-synthetic-fixtures.ts`; pass fixture names to redraw only those)
-from the real icons and approximate the game's layout from a description.
-`synthetic-fragments-heavy` (all four fragments, three rows each, next to gold
-and ruby) and `synthetic-money-heavy` (silver from 5,000,000 to 10,000,000,000
-in small gold text) draw icons at the in-game 48px. The three older log
-fixtures keep mock answers without `quantityText` / `box`, so `--mock` also
-covers answers from before those fields. To add a real screenshot, drop it in a
-new folder with a hand-checked `expected.json`.
+from the real icons, with the in-game border palette, and approximate the
+game's layout from a description. `synthetic-fragments-heavy` (all four
+fragments, three rows each, next to gold and ruby), `synthetic-money-heavy`
+(silver from 5,000,000 to 10,000,000,000 in small gold text) and
+`synthetic-rarity-decoys` (tracked items with their real borders next to
+Bright and Faded Veltryn and Adamantite Ingot, all expected `unknown`) draw
+icons at the in-game 48px. The three older log fixtures keep mock answers
+without `quantityText` / `box` / `borderColor`, so `--mock` also covers answers
+from before those fields.
+
+**Real screenshots** go in `fixtures/extractor/real-<name>/` (say
+`real-sandy-2026-09-22/`). On `/upload`, "Download fixture" saves the reviewed
+rows as `<image name>.expected.json`; rename it to `expected.json`, put it in
+the folder next to the screenshot itself, named `screenshot.png` (or `.jpg` /
+`.webp`), check the rows by hand
+(item ids, quantities as plain digits, timestamps and names exactly as shown;
+mark a lookalike row `"itemId": "unknown"` with `"decoy": "<id>"`), and commit
+both. Every `real-*` folder is picked up automatically; `--real-only` runs just
+those, and `--mock` skips them. These are the numbers that matter: the
+synthetic fixtures are drawn from the same icons the prompt uses and are
+easier than the game.
 
 ## Upload page (`/upload`)
 
