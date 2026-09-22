@@ -125,9 +125,9 @@ describe("GET /api/try-extract", () => {
     expect(await (await GET()).json()).toMatchObject({ passcodeRequired: true, enabled: true });
   });
 
-  it("reports disabled on Vercel without a passcode", async () => {
+  it("is open on Vercel without a passcode", async () => {
     vi.stubEnv("VERCEL", "1");
-    expect(await (await GET()).json()).toMatchObject({ passcodeRequired: false, enabled: false });
+    expect(await (await GET()).json()).toMatchObject({ passcodeRequired: false, enabled: true });
   });
 
   it("reports the admin's upload-mode settings", async () => {
@@ -194,11 +194,12 @@ describe("POST /api/try-extract with AI reading switched off", () => {
     expect(response.status).toBe(403);
   });
 
-  it("still answers 503 first when the playground itself is off on this deployment", async () => {
+  it("still answers 403 ai_disabled on Vercel without a passcode", async () => {
     vi.stubEnv("VERCEL", "1");
     const response = await post();
-    expect(response.status).toBe(503);
-    expect((await errorOf(response)).kind).toBe("disabled");
+    expect(response.status).toBe(403);
+    expect((await errorOf(response)).kind).toBe("ai_disabled");
+    expect(extractMock).not.toHaveBeenCalled();
   });
 
   it("the default mode alone does not gate anything", async () => {
@@ -300,12 +301,10 @@ describe("POST /api/try-extract", () => {
     });
   });
 
-  it("503 on Vercel when no passcode is configured, even if one is sent", async () => {
+  it("runs on Vercel when no passcode is configured, ignoring any passcode sent", async () => {
     vi.stubEnv("VERCEL", "1");
-    const response = await post({ passcode: "anything" });
-    expect(response.status).toBe(503);
-    expect((await errorOf(response)).kind).toBe("disabled");
-    expect(extractMock).not.toHaveBeenCalled();
+    expect((await post({ passcode: "anything" })).status).toBe(200);
+    expect(extractMock).toHaveBeenCalledTimes(1);
   });
 
   it("allows 60 requests per 10 minutes per IP", () => {

@@ -3,10 +3,10 @@
  * `route.ts` because a Next.js route file may only export its HTTP methods and
  * route config; the tests need `resetRateLimit` as well.
  *
- * Every POST spends the owner's API credits, so the gate is strict:
+ * Every POST spends the owner's API credits. The gate is optional:
  *  - `TRY_PASSCODE` set: the `x-try-passcode` header must match;
- *  - `TRY_PASSCODE` unset on Vercel: the playground is off (503);
- *  - `TRY_PASSCODE` unset locally: open.
+ *  - `TRY_PASSCODE` unset: open (the owner accepts the cost; the rate limit
+ *    below and the admin AI switch still apply).
  * On top of that an admin can switch AI reading off (the `aiExtractionEnabled`
  * setting): every POST is then refused with 403 `ai_disabled` before the rate
  * limiter or the extractor is touched, so no credits can be spent.
@@ -70,8 +70,8 @@ function configuredPasscode(): string | undefined {
 
 function gate(): Pick<PlaygroundStatusBody, "passcodeRequired" | "enabled"> {
   const passcodeRequired = configuredPasscode() !== undefined;
-  // Deployed without a passcode: never run unauthenticated in production.
-  const enabled = passcodeRequired || !process.env.VERCEL;
+  // Open without a passcode by the owner's choice; the admin AI switch is the kill switch.
+  const enabled = true;
   return { passcodeRequired, enabled };
 }
 
@@ -87,11 +87,6 @@ export async function handleGet(): Promise<Response> {
 }
 
 export async function handlePost(request: Request): Promise<Response> {
-  const { enabled } = gate();
-  if (!enabled) {
-    return fail(503, "disabled", "Playground disabled: TRY_PASSCODE is not set on this deployment.");
-  }
-
   // The admin switch comes before everything that costs anything: no rate-limit slot, no extractor.
   if (!(await getSettings()).aiExtractionEnabled) {
     return fail(403, "ai_disabled", "AI reading of screenshots is switched off by an admin. Add rows by hand.");
