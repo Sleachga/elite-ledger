@@ -4,7 +4,10 @@ import {
   ALWAYS_CHECKED_CONFIDENCE,
   FRAGMENT_REASON,
   MONEY_REASON,
+  SUSPECT_ROW_CONFIDENCE,
+  UNSEEN_BORDER_CONFIDENCE,
   checkAmount,
+  normalizeBorder,
   normalizeBox,
   normalizeOutput,
   sortByBox,
@@ -284,5 +287,150 @@ describe("normalizeOutput: rows a human always checks", () => {
     const [row] = normalize([modelRow({ confidence: 0.99 })]);
     expect(row.confidence).toBe(0.99);
     expect(row).not.toHaveProperty("lowConfidenceReason");
+  });
+});
+
+describe("normalizeBorder", () => {
+  it("returns nothing for answers from before the fields existed", () => {
+    expect(normalizeBorder(undefined, undefined)).toBeUndefined();
+    expect(normalizeBorder(null, undefined)).toBeUndefined();
+  });
+
+  it("keeps a listed value and the model's word", () => {
+    expect(normalizeBorder("uncommon", " blue ")).toEqual({ color: "uncommon", word: "blue" });
+    expect(normalizeBorder("none", "")).toEqual({ color: "none", word: "" });
+    expect(normalizeBorder("mythic", null)).toEqual({ color: "mythic", word: "" });
+  });
+
+  it("turns an off-list value into unclear and keeps it as the word", () => {
+    expect(normalizeBorder("blue", "")).toEqual({ color: "unclear", word: "blue" });
+    expect(normalizeBorder("blue", "azure")).toEqual({ color: "unclear", word: "azure" });
+    expect(normalizeBorder("", "green")).toEqual({ color: "unclear", word: "green" });
+    expect(normalizeBorder(null, "green")).toEqual({ color: "unclear", word: "green" });
+  });
+});
+
+describe("normalizeOutput: the border colour has to fit the item", () => {
+  const withBorder = (overrides: Partial<ModelRow> = {}) =>
+    modelRow({ quantityText: "112", borderColor: "common", borderColorWord: "green", ...overrides });
+
+  it("leaves a row alone when the border matches the item's rarity, and carries the border", () => {
+    const [row] = normalize([withBorder()]);
+
+    expect(row).toMatchObject({
+      itemId: "gold-ingot",
+      borderColor: "common",
+      borderColorWord: "green",
+      confidence: 0.95,
+    });
+    expect(row).not.toHaveProperty("lowConfidenceReason");
+  });
+
+  it("turns the item into unknown when the border stands for another rarity", () => {
+    const [row] = normalize([
+      withBorder({
+        itemId: "purified-veltryn",
+        quantity: "300",
+        quantityText: "300",
+        borderColor: "uncommon",
+        borderColorWord: "blue",
+        confidence: 0.9,
+      }),
+    ]);
+
+    expect(row.itemId).toBe("unknown");
+    expect(row.confidence).toBe(SUSPECT_ROW_CONFIDENCE);
+    expect(row.lowConfidenceReason).toMatch(
+      /border color uncommon \("blue"\) does not match Purified Veltryn \(rare, purple border\)/i,
+    );
+    expect(row).toMatchObject({ borderColor: "uncommon", borderColorWord: "blue", quantity: "300" });
+  });
+
+  it("demotes a fragment whose border is not red, without the fragment rule's line", () => {
+    const [row] = normalize([
+      withBorder({ itemId: "fragment-ring-of-night", quantity: "4", quantityText: "4", borderColorWord: "" }),
+    ]);
+
+    expect(row.itemId).toBe("unknown");
+    expect(row.confidence).toBe(SUSPECT_ROW_CONFIDENCE);
+    expect(row.lowConfidenceReason).toMatch(/border color common does not match \[Blueprint Fragment\] Ring of Night \(mythic, red border\)/i);
+    expect(row.lowConfidenceReason).not.toContain(FRAGMENT_REASON);
+  });
+
+  it("accepts a rarity that draws the same border colour (purple is rare or legendary)", () => {
+    const [nyxium, veltryn] = normalize([
+      withBorder({ itemId: "nyxium", quantity: "", quantityText: "", borderColor: "rare", borderColorWord: "purple", confidence: 0.9 }),
+      withBorder({ itemId: "purified-veltryn", quantity: "250", quantityText: "250", borderColor: "legendary", borderColorWord: "purple", confidence: 0.9 }),
+    ]);
+
+    expect(nyxium).toMatchObject({ itemId: "nyxium", confidence: 0.9 });
+    expect(veltryn).toMatchObject({ itemId: "purified-veltryn", confidence: 0.9 });
+    expect(nyxium).not.toHaveProperty("lowConfidenceReason");
+  });
+
+  it.each([
+    ["none", /no border was seen/i],
+    ["unclear", /could not be made out/i],
+  ])("keeps the pick but caps at 0.7 when the border is %s", (borderColor, reason) => {
+    const [row] = normalize([withBorder({ borderColor, borderColorWord: "", confidence: 0.99 })]);
+
+    expect(row.itemId).toBe("gold-ingot");
+    expect(row.confidence).toBe(UNSEEN_BORDER_CONFIDENCE);
+    expect(row.lowConfidenceReason).toMatch(reason);
+  });
+
+  it("adds to the model's own doubt and never raises a low confidence", () => {
+    const [row] = normalize([
+      withBorder({ borderColor: "unclear", confidence: 0.4, lowConfidenceReason: "Blurry." }),
+    ]);
+
+    expect(row.confidence).toBe(0.4);
+    expect(row.lowConfidenceReason).toMatch(/^Blurry\. The border color could not be made out/);
+  });
+
+  it("leaves Silver Coin out: it has no border in the log", () => {
+    const rows = normalize([
+      withBorder({ itemId: "silver-coin", quantity: "500,000,000", quantityText: "500,000,000", borderColor: "none", borderColorWord: "", confidence: 0.99 }),
+      withBorder({ itemId: "silver-coin", quantity: "5,000,000", quantityText: "5,000,000", borderColor: "uncommon", borderColorWord: "blue", confidence: 0.99 }),
+    ]);
+
+    for (const row of rows) {
+      expect(row.itemId).toBe("silver-coin");
+      expect(row.confidence).toBe(ALWAYS_CHECKED_CONFIDENCE);
+      expect(row.lowConfidenceReason).toBe(MONEY_REASON);
+    }
+  });
+
+  it("carries the border on an unknown row without judging it", () => {
+    const [row] = normalize([
+      withBorder({ itemId: "unknown", borderColor: "uncommon", borderColorWord: "blue", confidence: 0.6 }),
+    ]);
+
+    expect(row).toMatchObject({ itemId: "unknown", borderColor: "uncommon", borderColorWord: "blue", confidence: 0.6 });
+    expect(row).not.toHaveProperty("lowConfidenceReason");
+  });
+
+  it("treats an off-list border value as unclear and keeps it as the word", () => {
+    const [row] = normalize([withBorder({ borderColor: "greenish", borderColorWord: "", confidence: 0.99 })]);
+
+    expect(row).toMatchObject({
+      itemId: "gold-ingot",
+      borderColor: "unclear",
+      borderColorWord: "greenish",
+      confidence: UNSEEN_BORDER_CONFIDENCE,
+    });
+  });
+
+  it("reads answers without the border fields as before", () => {
+    const parsed = modelOutputSchema.parse({
+      looksLikeBankLog: true,
+      rows: [{ ...modelRow(), quantityText: "112", box: { top: 0.1, bottom: 0.2 } }],
+      notes: [],
+    });
+    const [row] = normalizeOutput(parsed, catalog).rows;
+
+    expect(row).not.toHaveProperty("borderColor");
+    expect(row).not.toHaveProperty("borderColorWord");
+    expect(row.confidence).toBe(0.95);
   });
 });

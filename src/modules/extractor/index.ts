@@ -6,10 +6,16 @@
  *
  * The model returns every row it sees; `normalize.ts` applies the rules this
  * module owns (deposits only, silver inline amounts, bigint-safe quantities,
- * closed item set, "not a bank log"). Nothing but `ExtractorError` is thrown.
+ * closed item set, border colour vs rarity, "not a bank log"). Nothing but
+ * `ExtractorError` is thrown.
  */
 import Anthropic from "@anthropic-ai/sdk";
-import { catalog as vendoredCatalog, type CatalogItem } from "@/catalog";
+import {
+  catalog as vendoredCatalog,
+  decoys as vendoredDecoys,
+  type CatalogItem,
+  type DecoyItem,
+} from "@/catalog";
 import { ExtractorError, toExtractorError } from "./errors";
 import { normalizeOutput, type ParsedRow } from "./normalize";
 import { SYSTEM_PROMPT, buildUserContent, defaultIconsDir, type ImageMediaType } from "./prompt";
@@ -18,6 +24,7 @@ import { DEFAULT_UPSCALE_LIMITS, prepareScreenshot, type UpscaleReport } from ".
 
 export { ExtractorError, type ExtractorErrorKind } from "./errors";
 export type { ParsedRow, RowBox } from "./normalize";
+export { BORDER_COLORS, type BorderColor } from "./schema";
 export type { UpscaleReport } from "./upscale";
 export type { ImageMediaType } from "./prompt";
 
@@ -57,7 +64,9 @@ export interface ExtractDeps {
   client?: ExtractorClient;
   /** Tracked items. Defaults to the vendored catalog. */
   catalog?: readonly CatalogItem[];
-  /** Where the catalog's icon files live. Defaults to `<cwd>/public/icons`. */
+  /** Untracked lookalikes shown as "NOT tracked" references. Defaults to the vendored list; `[]` sends none. */
+  decoys?: readonly DecoyItem[];
+  /** The icon root; bordered references are read from its `ref/` subfolder. Defaults to `<cwd>/public/icons`. */
   iconsDir?: string;
   /** Defaults to env `EXTRACTOR_MODEL`, then `claude-opus-5`. */
   model?: string;
@@ -228,6 +237,7 @@ export async function extract(
       throw new ExtractorError("config", "The screenshot is empty (0 bytes).");
     }
     const catalog = deps.catalog ?? vendoredCatalog;
+    const decoys = deps.decoys ?? vendoredDecoys;
     const model = deps.model ?? envValue("EXTRACTOR_MODEL") ?? DEFAULT_MODEL;
     const effort = resolveEffort(deps.effort);
     const fallbacks = resolveFallbacks(deps.fallbacks, model);
@@ -243,6 +253,7 @@ export async function extract(
 
     const content = await buildUserContent({
       catalog,
+      decoys,
       iconsDir: deps.iconsDir ?? defaultIconsDir(),
       screenshot: { data: screenshot.data, mediaType: screenshot.mediaType },
       knownCharacters: input.knownCharacters ?? [],
